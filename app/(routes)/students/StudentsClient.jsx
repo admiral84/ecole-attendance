@@ -1,256 +1,237 @@
+// app/students/StudentsClient.jsx
 'use client'
 
-import { useEffect, useState } from 'react'
-import { getStudents, getClasses, deleteStudent, updateStudent } from '../../actions/students'
-import { toast } from 'sonner'
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-export default function StudentsClient({ initialStudents = [], initialClasses = [] }) {
-  const [students, setStudents] = useState(initialStudents)
-  const [classes, setClasses] = useState(initialClasses)
-  const [loading, setLoading] = useState(false)
+export default function StudentsClient({ students = [] }) {
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedClass, setSelectedClass] = useState('')
-  const [editingStudent, setEditingStudent] = useState(null)
-  const [showEditModal, setShowEditModal] = useState(false)
-
-  async function loadData() {
-    setLoading(true)
-    try {
-      const [studentsData, classesData] = await Promise.all([
-        getStudents(),
-        getClasses()
-      ])
-      
-      const studentsWithClasses = studentsData.map(student => ({
-        ...student,
-        classInfo: classesData.find(c => c.id_class === student.id_class)
-      }))
-      
-      setStudents(studentsWithClasses)
-      setClasses(classesData)
-    } catch (error) {
-      toast.error('خطأ في تحميل البيانات')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('هل أنت متأكد من حذف هذا الطالب؟')) return
-    
-    try {
-      await deleteStudent(id)
-      toast.success('تم حذف الطالب بنجاح')
-      loadData()
-    } catch (error) {
-      toast.error('خطأ في حذف الطالب')
-    }
-  }
-
-  async function handleUpdate(e) {
-    e.preventDefault()
-    
-    try {
-      await updateStudent(editingStudent)
-      toast.success('تم تحديث الطالب بنجاح')
-      setShowEditModal(false)
-      setEditingStudent(null)
-      loadData()
-    } catch (error) {
-      toast.error('خطأ في تحديث الطالب')
-    }
-  }
-
+  const [filterClass, setFilterClass] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const router = useRouter()
+  
+  // Get unique classes for filter
+  const uniqueClasses = [...new Map(students.map(s => [s.id_class, s.classInfo?.libelle])).entries()]
+    .filter(([id]) => id)
+    .map(([id, name]) => ({ id, name }))
+  
   const filteredStudents = students.filter(student => {
-    const matchesSearch = student.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          student.id_eleve?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesClass = !selectedClass || student.id_class === selectedClass
-    return matchesSearch && matchesClass
+    // Search by name or num
+    const matchesSearch = 
+      student.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.prenom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.num?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.id_eleve?.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    // Filter by class
+    const matchesClass = !filterClass || student.id_class === filterClass
+    
+    // Filter by presence status
+    const matchesStatus = !filterStatus || 
+      (filterStatus === 'present' && student.present === true) ||
+      (filterStatus === 'absent' && student.present === false)
+    
+    return matchesSearch && matchesClass && matchesStatus
   })
-
-  if (loading && students.length === 0) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="text-4xl mb-2">⏳</div>
-          <div>جاري تحميل التلاميذ...</div>
+  
+  const getPresenceStatus = (present) => {
+    if (present === true || present === 'true' || present === 1) {
+      return { text: 'حاضر', color: 'bg-green-100 text-green-700' }
+    } else if (present === false || present === 'false' || present === 0) {
+      return { text: 'غائب', color: 'bg-red-100 text-red-700' }
+    }
+    return { text: 'غير محدد', color: 'bg-gray-100 text-gray-700' }
+  }
+  
+  const handleStudentClick = (studentId) => {
+    router.push(`/students/${studentId}`)
+  }
+  
+  const stats = {
+    total: students.length,
+    present: students.filter(s => s.present === true).length,
+    absent: students.filter(s => s.present === false).length,
+    undefined: students.filter(s => s.present !== true && s.present !== false).length
+  }
+  
+  return (
+    <div>
+      {/* Header with Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-blue-50 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+          <p className="text-sm text-blue-700">إجمالي التلاميذ</p>
+        </div>
+        <div className="bg-green-50 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-green-600">{stats.present}</p>
+          <p className="text-sm text-green-700">حاضرون</p>
+        </div>
+        <div className="bg-red-50 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-red-600">{stats.absent}</p>
+          <p className="text-sm text-red-700">غائبون</p>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-gray-600">{stats.undefined}</p>
+          <p className="text-sm text-gray-700">غير محدد</p>
         </div>
       </div>
-    )
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      
+      {/* Title and Add Button */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">قائمة التلاميذ</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            إجمالي التلاميذ: {filteredStudents.length}
+          <h1 className="text-2xl font-bold text-gray-900">قائمة التلاميذ</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            عرض {filteredStudents.length} من {students.length} تلميذ
           </p>
         </div>
         <Link
           href="/students/new"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
         >
           <span>+</span> إضافة تلميذ جديد
         </Link>
       </div>
-
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="بحث بالاسم أو المعرف..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="w-full md:w-64">
-            <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">جميع الفصول</option>
-              {classes.map((cls) => (
-                <option key={cls.id_class} value={cls.id_class}>
-                  {cls.ilbella || cls.id_class}
-                </option>
-              ))}
-            </select>
-          </div>
+      
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* Search Input */}
+        <div>
+          <input
+            type="text"
+            placeholder="بحث بالاسم أو المعرف أو رقم التسجيل..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        
+        {/* Class Filter */}
+        <div>
+          <select
+            value={filterClass}
+            onChange={(e) => setFilterClass(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">جميع الأقسام</option>
+            {uniqueClasses.map((cls) => (
+              <option key={cls.id} value={cls.id}>
+                {cls.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        {/* Status Filter */}
+        <div>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">جميع الحالات</option>
+            <option value="present">حاضر</option>
+            <option value="absent">غائب</option>
+          </select>
         </div>
       </div>
-
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-right py-3 px-4">المعرف</th>
-                <th className="text-right py-3 px-4">اسم التلميذ</th>
-                <th className="text-right py-3 px-4">القسم</th>
-                <th className="text-right py-3 px-4">رقم التسجيل</th>
-                <th className="text-right py-3 px-4">الحالة</th>
-                <th className="text-right py-3 px-4">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-500">
-                    <div className="text-4xl mb-2">📭</div>
-                    <p>لا يوجد تلاميذ</p>
-                  </td>
+      
+      {/* Clear Filters Button */}
+      {(searchTerm || filterClass || filterStatus) && (
+        <div className="mb-4 text-right">
+          <button
+            onClick={() => {
+              setSearchTerm('')
+              setFilterClass('')
+              setFilterStatus('')
+            }}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            مسح جميع الفلاتر ✕
+          </button>
+        </div>
+      )}
+      
+      {/* Students Table */}
+      {filteredStudents.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-500">
+          <div className="text-4xl mb-2">📭</div>
+          <p>لا يوجد تلاميذ</p>
+          {(searchTerm || filterClass || filterStatus) && (
+            <p className="text-sm mt-2">حاول تغيير معايير البحث</p>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr className="border-b">
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">المعرف</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">اسم التلميذ</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">رقم التسجيل</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">القسم</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">الحالة</th>
                 </tr>
-              ) : (
-                filteredStudents.map((student) => (
-                  <tr key={student.id_eleve} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 font-mono text-sm">{student.id_eleve}</td>
-                    <td className="py-3 px-4 font-medium">
-  <Link 
-    href={`/students/${student.id_eleve}`}
-    className="text-blue-600 hover:text-blue-800 hover:underline"
-  >
-    {student.nom || '-'}
-  </Link>
-</td>
-                    <td className="py-3 px-4">{student.classInfo?.ilbella || student.id_class || '-'}</td>
-                    <td className="py-3 px-4">{student.num || '-'}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        student.present ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {student.present ? 'حاضر' : 'غائب'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingStudent(student)
-                            setShowEditModal(true)
-                          }}
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDelete(student.id_eleve)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showEditModal && editingStudent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">تعديل التلميذ</h2>
-            <form onSubmit={handleUpdate}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">الاسم</label>
-                  <input
-                    type="text"
-                    value={editingStudent.nom || ''}
-                    onChange={(e) => setEditingStudent({...editingStudent, nom: e.target.value})}
-                    className="w-full p-2 border rounded"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">القسم</label>
-                  <select
-                    value={editingStudent.id_class || ''}
-                    onChange={(e) => setEditingStudent({...editingStudent, id_class: e.target.value})}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">اختر القسم</option>
-                    {classes.map((cls) => (
-                      <option key={cls.id_class} value={cls.id_class}>
-                        {cls.ilbella || cls.id_class}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">الحالة</label>
-                  <select
-                    value={editingStudent.present ? 'true' : 'false'}
-                    onChange={(e) => setEditingStudent({...editingStudent, present: e.target.value === 'true'})}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="true">حاضر</option>
-                    <option value="false">غائب</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded">
-                  حفظ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 bg-gray-300 py-2 rounded"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student) => {
+                  const status = getPresenceStatus(student.present)
+                  return (
+                    <tr 
+                      key={student.id_eleve || student.id} 
+                      onClick={() => handleStudentClick(student.id_eleve || student.id)}
+                      className="border-b hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4 font-mono text-sm">
+                        {student.id_eleve || student.matricule || '-'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {student.nom} {student.prenom}
+                          </div>
+                          {student.email && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {student.email}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-sm text-gray-600">
+                        {student.num || '-'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-block px-2 py-1 bg-purple-100 text-purple-700 rounded text-sm">
+                          {student.classInfo?.libelle || student.id_class || 'غير محدد'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${status.color}`}>
+                          {status.text}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
+        </div>
+      )}
+      
+      {/* Quick Stats Footer */}
+      {filteredStudents.length > 0 && (
+        <div className="mt-4 text-sm text-gray-500 text-center">
+          <span className="inline-block px-3 py-1 bg-gray-100 rounded-full">
+            📊 {filteredStudents.length} تلميذ
+          </span>
+          <span className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full mr-2">
+            ✅ {filteredStudents.filter(s => s.present === true).length} حاضر
+          </span>
+          <span className="inline-block px-3 py-1 bg-red-100 text-red-700 rounded-full mr-2">
+            ❌ {filteredStudents.filter(s => s.present === false).length} غائب
+          </span>
         </div>
       )}
     </div>

@@ -5,8 +5,13 @@ import { supabase } from "../lib/supabase/client"
 import { getStudents, getClasses } from "../lib/supabase/queries"
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 export default function Dashboard() {
+  const router = useRouter()
+  const [currentUser, setCurrentUser] = useState(null)
+  const [userDetails, setUserDetails] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [classes, setClasses] = useState([])
   const [students, setStudents] = useState([])
   const [users, setUsers] = useState([])
@@ -15,13 +20,40 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [recentAbsences, setRecentAbsences] = useState([])
 
+  // Check authentication first
   useEffect(() => {
+    checkAuth()
+  }, [])
+
+  async function checkAuth() {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (error || !user) {
+      console.log('No user found, redirecting to login...')
+      router.push('/login')
+      return
+    }
+    
+    setCurrentUser(user)
+    
+    // Get user details from users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('matricule', user.user_metadata?.matricule)
+      .single()
+    
+    if (!userError && userData) {
+      setUserDetails(userData)
+    }
+    
+    setAuthChecked(true)
     loadData()
     getTodayAttendance()
     getRecentAbsences()
     getUsers()
     getSeances()
-  }, [])
+  }
 
   async function loadData() {
     try {
@@ -85,11 +117,21 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) {
+  const getRoleLabel = (role) => {
+    switch(role) {
+      case 'admin': return 'مدير'
+      case 'teacher': return 'أستاذ'
+      case 'parent': return 'ولي أمر'
+      default: return 'مستخدم'
+    }
+  }
+
+  // Show loading while checking auth
+  if (!authChecked || loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="text-4xl mb-4">⏳</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <div className="text-gray-600">جاري تحميل لوحة التحكم...</div>
         </div>
       </div>
@@ -98,14 +140,14 @@ export default function Dashboard() {
 
   const stats = [
     {
-      title: 'الفصول الدراسية',
+      title: 'الأقسام',
       value: classes.length,
       icon: '📚',
       color: 'bg-blue-500',
       link: '/classes'
     },
     {
-      title: 'الطلاب المسجلين',
+      title: 'التلاميذ',
       value: students.length,
       icon: '👨‍🎓',
       color: 'bg-green-500',
@@ -126,7 +168,7 @@ export default function Dashboard() {
       link: '/attendance'
     },
     {
-      title: 'الفصول النشطة',
+      title: 'الأقسام النشطة',
       value: classes.filter(c => c.nstudent > 0).length,
       icon: '🏫',
       color: 'bg-purple-500',
@@ -143,6 +185,8 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto">
+     
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">لوحة التحكم</h1>
@@ -257,7 +301,8 @@ export default function Dashboard() {
                 <th className="text-right py-3 px-4">الاسم</th>
                 <th className="text-right py-3 px-4">اللقب</th>
                 <th className="text-right py-3 px-4">الدور</th>
-               </tr>
+                <th className="text-right py-3 px-4">البريد</th>
+              </tr>
             </thead>
             <tbody>
               {users.slice(0, 5).map((user) => (
@@ -267,16 +312,19 @@ export default function Dashboard() {
                   <td className="py-3 px-4">{user.prenom || '-'}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-1 text-xs rounded-full ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                      user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 
+                      user.role === 'teacher' ? 'bg-blue-100 text-blue-700' : 
+                      'bg-gray-100 text-gray-700'
                     }`}>
-                      {user.role || 'user'}
+                      {getRoleLabel(user.role)}
                     </span>
                   </td>
+                  <td className="py-3 px-4 text-sm text-gray-500">{user.email || '-'}</td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-500">
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
                     لا يوجد مستخدمين
                   </td>
                 </tr>
@@ -288,16 +336,16 @@ export default function Dashboard() {
 
       {/* Top Classes */}
       <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">نظرة عامة على الفصول</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">نظرة عامة على الأقسام</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                <th className="text-right py-3 px-4">معرف الفصل</th>
-                <th className="text-right py-3 px-4">اسم الفصل</th>
-                <th className="text-right py-3 px-4">عدد الطلاب</th>
+                <th className="text-right py-3 px-4">معرف القسم</th>
+                <th className="text-right py-3 px-4">اسم القسم</th>
+                <th className="text-right py-3 px-4">عدد التلاميذ</th>
                 <th className="text-right py-3 px-4">إجراءات</th>
-               </tr>
+              </tr>
             </thead>
             <tbody>
               {classes.slice(0, 5).map((classItem) => (
@@ -310,7 +358,7 @@ export default function Dashboard() {
                       href={`/students?class=${classItem.id_class}`}
                       className="text-blue-600 hover:text-blue-800 text-sm"
                     >
-                      عرض الطلاب ←
+                      عرض التلاميذ ←
                     </Link>
                   </td>
                 </tr>

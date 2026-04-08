@@ -17,7 +17,7 @@ export default function UploadStudentsPage() {
   const tables = [
     { name: 'eleve', label: 'التلاميذ', columns: ['id_eleve', 'nom', 'pere', 'parentphone', 'date_naissance', 'num', 'present', 'id_class'] },
     { name: 'users', label: 'المستخدمين', columns: ['matricule', 'nom', 'prenom', 'role', 'email', 'phone'] },
-    { name: 'classes', label: 'الفصول', columns: ['id_class', 'libelle', 'nbstudent'] },
+    { name: 'classes', label: 'الأقسام', columns: ['id_class', 'libelle', 'nbstudent'] },
     { name: 'absence', label: 'الغيابات', columns: ['id_eleve', 'id_classe', 'date_deb', 'heure_deb', 'date_fin', 'heure_fin', 'justified'] },
     { name: 'sanctions', label: 'العقوبات', columns: ['id_eleve', 'id_classe', 'motif', 'rapport', 'debut', 'fin'] },
     { name: 'seance', label: 'الحصص', columns: ['id_classe', 'matricule', 'jour', 'debut_heure', 'fin_heure'] }

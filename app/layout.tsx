@@ -5,8 +5,8 @@ import MobileHeader from './components/MobileHeader'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'نظام حضور الطلاب - مدرستي',
-  description: 'إدارة حضور الطلاب والغياب والعقوبات',
+  title: 'نظام حضور التلاميذ - مدرستي',
+  description: 'إدارة حضور التلاميذ والغياب والعقوبات',
 }
 
 export default function RootLayout({
