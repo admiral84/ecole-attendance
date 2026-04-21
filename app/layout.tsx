@@ -5,7 +5,7 @@ import MobileHeader from './components/MobileHeader'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'نظام حضور التلاميذ - مدرستي',
+  title: 'نظام حضور التلاميذ - معهد عبدالحميد غزواني',
   description: 'إدارة حضور التلاميذ والغياب والعقوبات',
 }
 

@@ -1,36 +1,45 @@
 import SingleEleve from './SingleEleve'
-import { supabase } from '../../../../lib/supabase/client'
+import { getStudentById } from '../../../actions/students'
+import { getSanctionsByStudent } from '../../../actions/sanctions'
+import { getClassById } from '../../../actions/classes'
+import {getAttendanceByStudent} from "../../../actions/absence"
+
+
 
 export default async function StudentPage({ params }) {
   const { id } = await params
   
-  // Fetch student data
-  const { data: student } = await supabase
-    .from('eleve')
-    .select('*')
-    .eq('id_eleve', id)
-    .single()
+  // Fetch student data using server action
+  const studentResult = await getStudentById(id)
+  
+  if (!studentResult.success || !studentResult.data) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-4xl mb-4">❌</div>
+        <h2 className="text-xl font-bold mb-2">التلميذ غير موجود</h2>
+      </div>
+    )
+  }
+  
+  const student = studentResult.data
   
   // Fetch class info
-  const { data: classInfo } = await supabase
-    .from('classes')
-    .select('id_class, ilbella')
-    .eq('id_class', student?.id_class)
-    .single()
+  let classInfo = null
+  if (student.id_class) {
+    const classResult = await getClassById(student.id_class)
+    if (classResult.success) {
+      classInfo = classResult.data
+    }
+  }
   
   // Fetch attendance history
-  const { data: attendance } = await supabase
-    .from('absence')
-    .select('*')
-    .eq('id_eleve', id)
-    .order('date_deb', { ascending: false })
+  // You need to add this function to absence.js
+  const attendanceResult = await getAttendanceByStudent(id)
+  const attendance = attendanceResult.success ? attendanceResult.data : []
   
-  // Fetch sanctions
-  const { data: sanctions } = await supabase
-    .from('sanctions')
-    .select('*')
-    .eq('id_eleve', id)
-    .order('debut', { ascending: false })
+  // Fetch sanctions using server action
+  const sanctionsResult = await getSanctionsByStudent(id)
+  const sanctions = sanctionsResult.success ? sanctionsResult.data : []
   
   // Calculate statistics
   const totalAbsences = attendance?.length || 0

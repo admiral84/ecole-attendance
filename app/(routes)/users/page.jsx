@@ -1,34 +1,38 @@
+// app/users/page.js
 import { createClient } from '../../../lib/supabase/server'
 import UsersClient from './UsersClient'
 
 export default async function UsersPage() {
   const supabase = await createClient()
   
-  // Get user data on server
   const { data: { user } } = await supabase.auth.getUser()
   
-  // Get user role
   let userRole = null
-  let userMatricule = null
+  let userId = null
   
   if (user) {
-    const { data: currentUser } = await supabase
+    // Fix: Use 'user_id' column instead of 'id'
+    const { data: currentUser, error } = await supabase
       .from('users')
-      .select('role')
-      .eq('matricule', user.user_metadata?.matricule)
+      .select('role, user_id')
+      .eq('user_id', user.id)  // Changed from 'id' to 'user_id'
       .single()
     
-    userRole = currentUser?.role
-    userMatricule = user.user_metadata?.matricule
+    if (error) {
+      console.error('Error fetching user role:', error)
+    } else {
+      userRole = currentUser?.role
+      userId = currentUser?.user_id  // This will be the same as user.id
+    }
   }
   
-  // Pass auth state to client component
+  console.log('UsersPage - User role:', userRole) // Should now show 'admin'
+  
   return (
     <UsersClient 
       isAuthenticated={!!user}
       userRole={userRole}
-      userMatricule={userMatricule}
-      userEmail={user?.email}
+      userId={userId}
     />
   )
 }

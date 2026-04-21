@@ -3,19 +3,19 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../../lib/supabase/client'
 import { toast } from 'sonner'
+import AddSanction from '../../../components/AddSanction'
 
 export default function SingleEleve({ student, classInfo, attendance, sanctions, stats }) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState('info') // info, attendance, sanctions
-  const [updating, setUpdating] = useState(false)
+  const [activeTab, setActiveTab] = useState('info')
+  const [showSanctionModal, setShowSanctionModal] = useState(false)
 
   if (!student) {
     return (
       <div className="text-center py-12">
         <div className="text-4xl mb-4">❌</div>
-        <h2 className="text-xl font-bold mb-2">الطالب غير موجود</h2>
+        <h2 className="text-xl font-bold mb-2">التلميذ غير موجود</h2>
         <Link href="/students" className="text-blue-600 hover:underline">
           العودة إلى قائمة التلاميذ
         </Link>
@@ -23,24 +23,22 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
     )
   }
 
-  async function updateStatus(present) {
-    setUpdating(true)
-    const { error } = await supabase
-      .from('eleve')
-      .update({ present })
-      .eq('id_eleve', student.id_eleve)
-    
-    if (error) {
-      toast.error('خطأ في تحديث الحالة')
-    } else {
-      toast.success(`تم تغيير الحالة إلى ${present ? 'حاضر' : 'غائب'}`)
-      router.refresh()
-    }
-    setUpdating(false)
-  }
-
   function getStatusColor(present) {
     return present ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+  }
+
+  // Get class name properly
+  const getClassName = () => {
+    if (classInfo?.libelle) {
+      return classInfo.libelle
+    }
+    if (student.classes?.libelle) {
+      return student.classes.libelle
+    }
+    if (student.id_class) {
+      return student.id_class
+    }
+    return '-'
   }
 
   return (
@@ -56,20 +54,10 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             {student.nom || 'غير معروف'}
+            {student.prenom && ` ${student.prenom}`}
           </h1>
           <p className="text-gray-600">المعرف: {student.id_eleve}</p>
         </div>
-        <button
-          onClick={() => updateStatus(!student.present)}
-          disabled={updating}
-          className={`px-4 py-2 rounded-lg font-semibold transition ${
-            student.present 
-              ? 'bg-red-600 hover:bg-red-700 text-white' 
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-        >
-          {updating ? 'جاري التحديث...' : (student.present ? 'تسجيل غياب' : 'تسجيل حضور')}
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -143,7 +131,7 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
                 </div>
                 <div className="border-b pb-2">
                   <span className="text-gray-500">الاسم الكامل:</span>
-                  <p className="font-medium">{student.nom || '-'}</p>
+                  <p className="font-medium">{student.nom || '-'} {student.prenom || ''}</p>
                 </div>
                 <div className="border-b pb-2">
                   <span className="text-gray-500">اسم الأب:</span>
@@ -151,7 +139,7 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
                 </div>
                 <div className="border-b pb-2">
                   <span className="text-gray-500">القسم:</span>
-                  <p className="font-medium">{classInfo?.ilbella || student.id_class || '-'}</p>
+                  <p className="font-medium">{getClassName()}</p>
                 </div>
                 <div className="border-b pb-2">
                   <span className="text-gray-500">رقم التسجيل:</span>
@@ -191,6 +179,7 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
                         <th className="text-right py-2 px-4">التاريخ</th>
                         <th className="text-right py-2 px-4">الوقت</th>
                         <th className="text-right py-2 px-4">تاريخ الانتهاء</th>
+                        <th className="text-right py-2 px-4">الوقت</th>
                         <th className="text-right py-2 px-4">مبرر</th>
                       </tr>
                     </thead>
@@ -199,7 +188,8 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
                         <tr key={record.id} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-4">{record.date_deb || '-'}</td>
                           <td className="py-2 px-4">{record.heure_deb || '-'}</td>
-                          <td className="py-2 px-4">{record.date_fin || '-'}</td>
+                          <td className="py-2 px-4">{record.date_fin || 'لا يزال'}</td>
+                          <td className="py-2 px-4">{record.heure_fin || '-'}</td>
                           <td className="py-2 px-4">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                               record.justified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -235,8 +225,8 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
                         </div>
                         <div className="text-left">
                           <p className="text-sm text-gray-500">
-                            من: {sanction.debut || '-'} 
-                            {sanction.fin && ` إلى: ${sanction.fin}`}
+                            من: {sanction.startDate || '-'} 
+                            {sanction.endDate && ` إلى: ${sanction.endDate}`}
                           </p>
                         </div>
                       </div>
@@ -251,19 +241,29 @@ export default function SingleEleve({ student, classInfo, attendance, sanctions,
 
       {/* Action Buttons */}
       <div className="flex gap-4 mt-6">
-        <Link
-          href={`/attendance?student=${student.id_eleve}`}
-          className="flex-1 bg-blue-600 text-white text-center py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-          تسجيل غياب جديد
-        </Link>
-        <Link
-          href={`/sanctions/new?student=${student.id_eleve}`}
+        <button
+          onClick={() => setShowSanctionModal(true)}
           className="flex-1 bg-orange-600 text-white text-center py-2 rounded-lg hover:bg-orange-700 transition"
         >
           إضافة عقوبة
-        </Link>
+        </button>
       </div>
+
+      {/* Add Sanction Modal */}
+      {showSanctionModal && (
+        <AddSanction
+          studentId={student.id_eleve}
+          studentName={`${student.nom} ${student.prenom || ''}`}
+          classId={student.id_class}
+          className={getClassName()}
+          onClose={() => setShowSanctionModal(false)}
+          onSuccess={() => {
+            setShowSanctionModal(false)
+            router.refresh()
+            toast.success('تم إضافة العقوبة بنجاح')
+          }}
+        />
+      )}
     </div>
   )
 }

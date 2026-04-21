@@ -103,19 +103,20 @@ export default function RegisterPage() {
         return
       }
 
-      // Insert user into database with email
+      // Insert user into database with user_id as primary key
       if (authData.user) {
         const { error: insertError } = await supabase
           .from('users')
           .insert([
             {
+              user_id: authData.user.id,  // This is now the primary key
               matricule: formData.matricule,
               nom: formData.nom,
               prenom: formData.prenom,
               role: formData.role,
               phone: formData.phone,
               email: formData.email,
-              user_id: authData.user.id
+              approved: false  // New users start as not approved
             }
           ])
 
@@ -125,17 +126,11 @@ export default function RegisterPage() {
         } else {
           toast.success('تم إنشاء الحساب بنجاح!')
           
-          // Redirect based on role
-          if (formData.role === 'teacher') {
-            setTimeout(() => {
-              router.push('/complete-profile')
-            }, 1500)
-          } else {
-            toast.success('تحقق من بريدك الإلكتروني للتأكيد')
-            setTimeout(() => {
-              router.push('/login')
-            }, 2000)
-          }
+          // Redirect to login page after successful registration
+          toast.success('تحقق من بريدك الإلكتروني للتأكيد')
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
         }
       }
 
@@ -156,11 +151,9 @@ export default function RegisterPage() {
             <span className="text-3xl">🏫</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold">إنشاء حساب جديد</h1>
-          {formData.role === 'teacher' && (
-            <p className="text-sm text-gray-600 mt-2">
-              ستحتاج لإكمال ملفك الشخصي بعد التسجيل
-            </p>
-          )}
+          <p className="text-sm text-gray-600 mt-2">
+            ستحتاج لتأكيد بريدك الإلكتروني بعد التسجيل
+          </p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
@@ -168,7 +161,7 @@ export default function RegisterPage() {
             <input 
               name="nom" 
               placeholder="الاسم" 
-              value={formData.nom}  // Always a string
+              value={formData.nom}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -176,7 +169,7 @@ export default function RegisterPage() {
             <input 
               name="prenom" 
               placeholder="اللقب" 
-              value={formData.prenom}  // Always a string
+              value={formData.prenom}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -187,7 +180,7 @@ export default function RegisterPage() {
             <input 
               name="matricule" 
               placeholder="المعرف" 
-              value={formData.matricule}  // Always a string
+              value={formData.matricule}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -195,7 +188,7 @@ export default function RegisterPage() {
             <input 
               name="phone" 
               placeholder="رقم الهاتف" 
-              value={formData.phone}  // Always a string
+              value={formData.phone}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -206,7 +199,7 @@ export default function RegisterPage() {
             type="email" 
             name="email" 
             placeholder="البريد الإلكتروني" 
-            value={formData.email}  // Always a string
+            value={formData.email}
             onChange={handleChange} 
             className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
             required 
@@ -217,7 +210,7 @@ export default function RegisterPage() {
               type="password" 
               name="password" 
               placeholder="كلمة المرور" 
-              value={formData.password}  // Always a string
+              value={formData.password}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -226,7 +219,7 @@ export default function RegisterPage() {
               type="password" 
               name="confirmPassword" 
               placeholder="تأكيد كلمة المرور" 
-              value={formData.confirmPassword}  // Always a string
+              value={formData.confirmPassword}
               onChange={handleChange} 
               className="p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
               required 
@@ -235,13 +228,13 @@ export default function RegisterPage() {
 
           <select 
             name="role" 
-            value={formData.role}  // Always a string (default 'teacher')
+            value={formData.role}
             onChange={handleChange} 
             className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="teacher">👨‍🏫 أستاذ</option>
             <option value="admin">👨‍💼 مدير</option>
-            <option value="parent">👨‍👩‍👧 إداري</option>
+            <option value="parent">👨‍👩‍👧 ولي أمر</option>
           </select>
 
           <button 

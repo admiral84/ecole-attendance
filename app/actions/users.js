@@ -2,28 +2,46 @@
 
 import { createClient } from '../../lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+
+// Initialize admin client with service role key
+const getAdminClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('Missing Supabase admin credentials')
+    return null
+  }
+  
+  return createAdminClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+}
 
 // Fetch all users (admin only)
 export async function getAllUsers() {
   try {
     const supabase = await createClient()
     
-    // Check if user is authenticated
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      return { error: 'غير مصرح به. الرجاء تسجيل الدخول', users: null }
+      return { error: 'غير مصرح به. الرجاء تسجيل الدخول', users: [] }
     }
     
-    // Check if user has admin role
+    // Get current user's role - using user_id instead of id
     const { data: currentUser, error: roleError } = await supabase
       .from('users')
       .select('role')
-      .eq('matricule', user.user_metadata?.matricule)
+      .eq('user_id', user.id)
       .single()
     
-    if (roleError || !currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
-      return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', users: null }
+    if (roleError || !currentUser || currentUser.role !== 'admin') {
+      return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', users: [] }
     }
     
     // Fetch all users
@@ -34,29 +52,95 @@ export async function getAllUsers() {
     
     if (usersError) {
       console.error('Error fetching users:', usersError)
-      return { error: 'حدث خطأ في جلب المستخدمين', users: null }
+      return { error: 'حدث خطأ في جلب المستخدمين', users: [] }
     }
     
-    return { users, error: null }
+    return { users: users || [], error: null }
   } catch (error) {
-    console.error('Unexpected error:', error)
-    return { error: 'حدث خطأ غير متوقع', users: null }
+    console.error('Unexpected error in getAllUsers:', error)
+    return { error: 'حدث خطأ غير متوقع', users: [] }
   }
 }
 
-// Fetch single user by matricule
-export async function getUserByMatricule(matricule) {
+// Fetch all users without role restriction (for testing/super admin)
+export async function getAllUsersNoRestriction() {
   try {
     const supabase = await createClient()
     
-    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      return { error: 'غير مصرح به', users: [] }
+    }
+    
+    // Check if user is admin - using user_id instead of id
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+    
+    // Only allow admins to use this function
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', users: [] }
+    }
+    
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('*')
+      .order('nom', { ascending: true })
+    
+    if (usersError) {
+      console.error('Error fetching users:', usersError)
+      return { error: 'حدث خطأ في جلب المستخدمين', users: [] }
+    }
+    
+    return { users: users || [], error: null }
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return { error: 'حدث خطأ غير متوقع', users: [] }
+  }
+}
+
+// Fetch single user by user_id
+export async function getUserById(userId) {
+  try {
+    const supabase = await createClient()
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
       return { error: 'غير مصرح به', user: null }
     }
     
-    // Fetch user
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+    
+    if (userError) {
+      return { error: 'المستخدم غير موجود', user: null }
+    }
+    
+    return { user: userData, error: null }
+  } catch (error) {
+    console.error('Error in getUserById:', error)
+    return { error: 'حدث خطأ غير متوقع', user: null }
+  }
+}
+
+// Fetch user by matricule
+export async function getUserByMatricule(matricule) {
+  try {
+    const supabase = await createClient()
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      return { error: 'غير مصرح به', user: null }
+    }
+    
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
@@ -69,7 +153,7 @@ export async function getUserByMatricule(matricule) {
     
     return { user: userData, error: null }
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in getUserByMatricule:', error)
     return { error: 'حدث خطأ غير متوقع', user: null }
   }
 }
@@ -79,42 +163,45 @@ export async function getCurrentUser() {
   try {
     const supabase = await createClient()
     
-    // Get auth user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
       return { error: 'غير مصرح به', user: null, authUser: null }
     }
     
-    // Get additional user data from users table
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
-      .eq('matricule', user.user_metadata?.matricule)
+      .eq('user_id', user.id)
       .single()
     
     if (userError) {
-      // Return auth user data as fallback
-      return { 
-        user: {
-          email: user.email,
-          nom: user.user_metadata?.nom || 'مستخدم',
-          prenom: user.user_metadata?.prenom || '',
-          role: user.user_metadata?.role || 'teacher',
-          matricule: user.user_metadata?.matricule
-        },
-        authUser: user,
-        error: null 
+      // If user exists in auth but not in users table, create it
+      const newUser = {
+        user_id: user.id,
+        matricule: user.user_metadata?.matricule || user.id,
+        nom: user.user_metadata?.nom || 'مستخدم',
+        prenom: user.user_metadata?.prenom || '',
+        role: user.user_metadata?.role || 'teacher',
+        email: user.email,
+        approved: true
       }
+      
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert([newUser])
+      
+      if (insertError) {
+        console.error('Error creating user record:', insertError)
+        return { user: newUser, authUser: user, error: null }
+      }
+      
+      return { user: newUser, authUser: user, error: null }
     }
     
-    return { 
-      user: userData,
-      authUser: user,
-      error: null 
-    }
+    return { user: userData, authUser: user, error: null }
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in getCurrentUser:', error)
     return { error: 'حدث خطأ غير متوقع', user: null, authUser: null }
   }
 }
@@ -124,26 +211,22 @@ export async function getUsersByRole(role) {
   try {
     const supabase = await createClient()
     
-    // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      return { error: 'غير مصرح به', users: null }
+      return { error: 'غير مصرح به', users: [] }
     }
     
-    // Check if user has permission (admin can view all, teachers can view students only)
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
-      .eq('matricule', user.user_metadata?.matricule)
+      .eq('user_id', user.id)
       .single()
     
-    // Validate permissions
     if (currentUser?.role === 'teacher' && role !== 'student') {
-      return { error: 'غير مصرح به. يمكن للمعلمين فقط عرض التلاميذ', users: null }
+      return { error: 'غير مصرح به. يمكن للمعلمين فقط عرض التلاميذ', users: [] }
     }
     
-    // Fetch users by role
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('*')
@@ -151,172 +234,206 @@ export async function getUsersByRole(role) {
       .order('nom', { ascending: true })
     
     if (usersError) {
-      return { error: 'حدث خطأ في جلب المستخدمين', users: null }
+      return { error: 'حدث خطأ في جلب المستخدمين', users: [] }
     }
     
-    return { users, error: null }
+    return { users: users || [], error: null }
   } catch (error) {
-    console.error('Error:', error)
-    return { error: 'حدث خطأ غير متوقع', users: null }
+    console.error('Error in getUsersByRole:', error)
+    return { error: 'حدث خطأ غير متوقع', users: [] }
   }
 }
 
 // Update user role (admin only)
-export async function updateUserRole(matricule, newRole) {
+
+export async function updateUserRole(userId, newRole) {
   try {
     const supabase = await createClient()
     
-    // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
       return { error: 'غير مصرح به', success: false }
     }
     
-    // Check if current user is admin
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
-      .eq('matricule', user.user_metadata?.matricule)
+      .eq('user_id', user.id)  // Changed from 'id' to 'user_id'
       .single()
     
     if (!currentUser || currentUser.role !== 'admin') {
       return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', success: false }
     }
     
-    // Validate new role
-    const validRoles = ['admin', 'teacher', 'parent']
+    if (userId === user.id) {
+      return { error: 'لا يمكنك تغيير دور حسابك الخاص', success: false }
+    }
+    
+    const validRoles = ['admin', 'teacher', 'manager']  // Updated roles
     if (!validRoles.includes(newRole)) {
       return { error: 'دور غير صالح', success: false }
     }
     
-    // Update user role
     const { error: updateError } = await supabase
       .from('users')
       .update({ role: newRole })
-      .eq('matricule', matricule)
+      .eq('user_id', userId)  // Changed from 'id' to 'user_id'
     
     if (updateError) {
+      console.error('Error updating user role:', updateError)
       return { error: 'حدث خطأ في تحديث الدور', success: false }
     }
     
-    // Revalidate paths that display users
-    revalidatePath('/users')
     revalidatePath('/dashboard')
+    revalidatePath('/users')
     
     return { success: true, error: null }
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in updateUserRole:', error)
     return { error: 'حدث خطأ غير متوقع', success: false }
   }
 }
-
-// Delete user (admin only)
-export async function deleteUser(matricule) {
+// Delete user - Deletes from auth.users (cascade will delete from users table)
+export async function deleteUser(userId) {
   try {
     const supabase = await createClient()
     
-    // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
       return { error: 'غير مصرح به', success: false }
     }
     
-    // Check if current user is admin
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
-      .eq('matricule', user.user_metadata?.matricule)
+      .eq('user_id', user.id)
       .single()
     
     if (!currentUser || currentUser.role !== 'admin') {
       return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', success: false }
     }
     
-    // Prevent deleting yourself
-    if (matricule === user.user_metadata?.matricule) {
+    if (userId === user.id) {
       return { error: 'لا يمكنك حذف حسابك الخاص', success: false }
     }
     
-    // Delete from users table
-    const { error: deleteError } = await supabase
-      .from('users')
-      .delete()
-      .eq('matricule', matricule)
+    // Delete from auth.users (ON DELETE CASCADE will automatically delete from public.users)
+    const adminClient = getAdminClient()
     
-    if (deleteError) {
-      return { error: 'حدث خطأ في حذف المستخدم', success: false }
+    if (!adminClient) {
+      return { error: 'خطأ في تهيئة عميل المصادقة', success: false }
     }
     
-    // Revalidate paths
-    revalidatePath('/users')
+    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId)
+    
+    if (deleteAuthError) {
+      console.error('Error deleting auth user:', deleteAuthError)
+      return { error: `فشل حذف المستخدم: ${deleteAuthError.message}`, success: false }
+    }
+    
     revalidatePath('/dashboard')
+    revalidatePath('/users')
+    revalidatePath('/seance')
+    revalidatePath('/sanctions')
     
     return { success: true, error: null }
   } catch (error) {
-    console.error('Error:', error)
-    return { error: 'حدث خطأ غير متوقع', success: false }
+    console.error('Error in deleteUser:', error)
+    return { error: 'حدث خطأ غير متوقع أثناء حذف المستخدم', success: false }
   }
 }
 
-// Create user after email verification (self registration)
+// Create user - Creates both auth user and users table record
 export async function createUser(userData) {
   try {
     const supabase = await createClient()
-
-    // Check authenticated user
+    const adminClient = getAdminClient()
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
+    
     if (authError || !user) {
       throw new Error('غير مصرح به')
     }
-
-    // Validate data
-    if (!userData?.matricule || !userData?.nom) {
-      throw new Error('بيانات غير صالحة')
+    
+    // Check if current user is admin - using user_id instead of id
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+    
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('غير مصرح به. فقط المديرين يمكنهم إنشاء مستخدمين')
     }
-
-    // Ensure user can only create himself
-    if (user.user_metadata?.matricule !== userData.matricule) {
-      throw new Error('غير مصرح به')
+    
+    if (!userData?.email || !userData?.password) {
+      throw new Error('البريد الإلكتروني وكلمة المرور مطلوبة')
     }
-
-    // Check if user already exists
-    const { data: existingUser } = await supabase
+    
+    if (!userData?.matricule) {
+      throw new Error('المعرف (matricule) مطلوب')
+    }
+    
+    // Check if matricule already exists
+    const { data: existingMatricule } = await supabase
       .from('users')
       .select('matricule')
       .eq('matricule', userData.matricule)
       .maybeSingle()
-
-    if (existingUser) {
-      return { success: true }
+    
+    if (existingMatricule) {
+      throw new Error('المعرف موجود بالفعل')
     }
-
-    // Insert user
-    const { error: insertError } = await supabase
-      .from('users')
-      .insert([{
+    
+    // Create auth user
+    const { data: newAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
+      email: userData.email,
+      password: userData.password,
+      email_confirm: true,
+      user_metadata: {
         matricule: userData.matricule,
         nom: userData.nom,
         prenom: userData.prenom,
+        role: userData.role || 'teacher'
+      }
+    })
+    
+    if (createAuthError) {
+      throw new Error(createAuthError.message)
+    }
+    
+    // Create users table record with user_id as primary key
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert([{
+        user_id: newAuthUser.user.id,
+        matricule: userData.matricule,
+        nom: userData.nom,
+        prenom: userData.prenom || '',
         role: userData.role || 'teacher',
-        phone: userData.phone || null
+        phone: userData.phone || null,
+        email: userData.email,
+        approved: userData.approved || false
       }])
-
+    
     if (insertError) {
+      // Rollback: delete the auth user if users table insert fails
+      await adminClient.auth.admin.deleteUser(newAuthUser.user.id)
       throw new Error(insertError.message)
     }
-
+    
+    revalidatePath('/dashboard')
+    revalidatePath('/users')
+    
     return { success: true }
-
+    
   } catch (error) {
     console.error('createUser error:', error)
     throw new Error(error.message || 'حدث خطأ أثناء إنشاء المستخدم')
   }
 }
-
-
 
 // Update user profile
 export async function updateUserProfile(userData) {
@@ -329,41 +446,31 @@ export async function updateUserProfile(userData) {
       return { error: 'غير مصرح به', success: false }
     }
     
-    const { data: currentUser, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('matricule', user.user_metadata?.matricule)
-      .single()
-    
-    if (userError) {
-      return { error: 'المستخدم غير موجود', success: false }
-    }
-    
     const updateData = {
-      nom: userData.nom || currentUser.nom,
-      prenom: userData.prenom || currentUser.prenom,
-      phone: userData.phone || currentUser.phone,
-      updated_at: new Date().toISOString()
+      nom: userData.nom,
+      prenom: userData.prenom,
+      phone: userData.phone
     }
     
     const { error: updateError } = await supabase
       .from('users')
       .update(updateData)
-      .eq('matricule', currentUser.matricule)
+      .eq('user_id', user.id)
     
     if (updateError) {
       return { error: 'حدث خطأ في تحديث الملف الشخصي', success: false }
     }
     
-    // Update auth metadata
+    // Update auth user metadata
     await supabase.auth.updateUser({
       data: {
-        nom: updateData.nom,
-        prenom: updateData.prenom,
-        phone: updateData.phone
+        nom: userData.nom,
+        prenom: userData.prenom,
+        phone: userData.phone
       }
     })
     
+    revalidatePath('/dashboard')
     revalidatePath('/profile')
     
     return { success: true, error: null }
@@ -384,7 +491,6 @@ export async function updateUserPassword(currentPassword, newPassword) {
       return { error: 'غير مصرح به', success: false }
     }
     
-    // Verify current password
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password: currentPassword
@@ -394,7 +500,6 @@ export async function updateUserPassword(currentPassword, newPassword) {
       return { error: 'كلمة المرور الحالية غير صحيحة', success: false }
     }
     
-    // Update password
     const { error: updateError } = await supabase.auth.updateUser({
       password: newPassword
     })
@@ -406,6 +511,52 @@ export async function updateUserPassword(currentPassword, newPassword) {
     return { success: true, error: null }
   } catch (error) {
     console.error('Error updating password:', error)
+    return { error: 'حدث خطأ غير متوقع', success: false }
+  }
+}
+
+// Update user approval status (admin only)
+// Update user approval status (admin only)
+export async function updateUserApproval(userId, approved) {
+  try {
+    const supabase = await createClient()
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      return { error: 'غير مصرح به', success: false }
+    }
+    
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user.id)  // Changed from 'id' to 'user_id'
+      .single()
+    
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', success: false }
+    }
+    
+    // Don't allow changing your own approval status
+    if (userId === user.id) {
+      return { error: 'لا يمكنك تغيير حالة حسابك الخاص', success: false }
+    }
+    
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ approved })
+      .eq('user_id', userId)  // Changed from 'id' to 'user_id'
+    
+    if (updateError) {
+      console.error('Error updating user approval:', updateError)
+      return { error: 'حدث خطأ في تحديث حالة المستخدم', success: false }
+    }
+    
+    revalidatePath('/users')
+    
+    return { success: true, error: null }
+  } catch (error) {
+    console.error('Error in updateUserApproval:', error)
     return { error: 'حدث خطأ غير متوقع', success: false }
   }
 }

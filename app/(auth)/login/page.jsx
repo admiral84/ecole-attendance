@@ -17,13 +17,13 @@ export default function LoginPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const router = useRouter()
   
-  // إنشاء client في المتصفح
+  // Create browser client
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
   )
 
-  // التحقق من وجود جلسة نشطة عند تحميل الصفحة
+  // Check for existing session on page load
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()

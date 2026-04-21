@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react'
 import { getCurrentUser, updateUserProfile, updateUserPassword } from '../../actions/users'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { User, Mail, Phone, Key, Save, Edit2, X, LogOut } from 'lucide-react'
+import { User, Mail, Phone, Key, Save, Edit2, X, LogOut, Calendar, Clock } from 'lucide-react'
+import Link from 'next/link'
 
 export default function Profile() {
   const router = useRouter()
@@ -360,6 +361,25 @@ export default function Profile() {
 
           {/* Sidebar */}
           <div className="space-y-4">
+            {/* Schedule Management Card - Only for teachers */}
+            {user?.role === 'teacher' && (
+              <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2 mb-4">
+                  <Calendar size={20} />
+                  جدول الحصص
+                </h2>
+                <p className="text-gray-600 text-sm mb-4">
+                  يمكنك إنشاء أو تعديل جدول الحصص الخاص بك
+                </p>
+                <Link href="/emploi">
+                  <button className="w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <Clock size={18} />
+                    {user?.schedule_exists ? 'تعديل الجدول' : 'إنشاء جدول الحصص'}
+                  </button>
+                </Link>
+              </div>
+            )}
+
             {/* Password Change Card */}
             <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6">
               <h2 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2 mb-4">

@@ -25,17 +25,115 @@ export default function SingleClass({ classInfo, students, stats }) {
 
   async function toggleStudentStatus(studentId, currentStatus) {
     setUpdating(true)
-    const { error } = await supabase
-      .from('eleve')
-      .update({ present: !currentStatus })
-      .eq('id_eleve', studentId)
     
-    if (error) {
-      toast.error('خطأ في تحديث حالة الطالب')
-    } else {
-      toast.success('تم تحديث الحالة بنجاح')
-      router.refresh()
+    const newStatus = !currentStatus
+    const now = new Date()
+    const currentDate = now.toISOString().split('T')[0]
+    const currentTime = now.toTimeString().slice(0, 5)
+    
+    try {
+      if (newStatus === false) {
+        // تسجيل غياب جديد
+        // أولاً: التأكد من عدم وجود غياب نشط لهذا التلميذ
+        const { data: existingAbsence, error: checkError } = await supabase
+          .from('absence')
+          .select('id')
+          .eq('id_eleve', studentId)
+          .is('date_fin', null)
+          .maybeSingle()
+        
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error('Error checking existing absence:', checkError)
+        }
+        
+        // إذا لم يوجد غياب نشط، قم بإضافته
+        if (!existingAbsence) {
+          const { error: absenceError } = await supabase
+            .from('absence')
+            .insert({
+              id_eleve: studentId,
+              id_classe: classInfo.id_class, // ملاحظة: id_classe (مع e) كما في هيكل الجدول
+              date_deb: currentDate,
+              heure_deb: currentTime,
+              justified: false
+              // date_fin و heure_fin تبقى null للغياب النشط
+            })
+          
+          if (absenceError) {
+            console.error('Error creating absence:', absenceError)
+            toast.error('خطأ في تسجيل الغياب: ' + absenceError.message)
+            setUpdating(false)
+            return
+          }
+        }
+        
+        // تحديث حالة الحضور في جدول eleve
+        const { error: studentError } = await supabase
+          .from('eleve')
+          .update({ present: false })
+          .eq('id_eleve', studentId)
+        
+        if (studentError) {
+          console.error('Error updating student:', studentError)
+          toast.error('خطأ في تحديث حالة التلميذ')
+        } else {
+          toast.success('تم تسجيل الغياب بنجاح')
+          router.refresh()
+        }
+      } else {
+        // تسجيل عودة (حضور)
+        // البحث عن الغياب النشط لهذا التلميذ
+        const { data: activeAbsence, error: findError } = await supabase
+          .from('absence')
+          .select('id')
+          .eq('id_eleve', studentId)
+          .is('date_fin', null)
+          .maybeSingle()
+        
+        if (findError) {
+          console.error('Error finding absence:', findError)
+          toast.error('خطأ في البحث عن سجل الغياب')
+          setUpdating(false)
+          return
+        }
+        
+        if (activeAbsence) {
+          // تحديث سجل الغياب بتاريخ ووقت العودة
+          const { error: updateError } = await supabase
+            .from('absence')
+            .update({
+              date_fin: currentDate,
+              heure_fin: currentTime
+            })
+            .eq('id', activeAbsence.id)
+          
+          if (updateError) {
+            console.error('Error updating absence:', updateError)
+            toast.error('خطأ في تحديث سجل الغياب')
+            setUpdating(false)
+            return
+          }
+        }
+        
+        // تحديث حالة الحضور في جدول eleve
+        const { error: studentError } = await supabase
+          .from('eleve')
+          .update({ present: true })
+          .eq('id_eleve', studentId)
+        
+        if (studentError) {
+          console.error('Error updating student:', studentError)
+          toast.error('خطأ في تحديث حالة التلميذ')
+        } else {
+          toast.success('تم تسجيل العودة بنجاح')
+          router.refresh()
+        }
+      }
+    } catch (error) {
+      console.error('Error in toggleStudentStatus:', error)
+      toast.error('حدث خطأ غير متوقع')
     }
+    
     setUpdating(false)
   }
 
@@ -56,7 +154,7 @@ export default function SingleClass({ classInfo, students, stats }) {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            {classInfo.libelle }
+            {classInfo.libelle}
           </h1>
           <p className="text-gray-600">المعرف: {classInfo.id_class}</p>
         </div>

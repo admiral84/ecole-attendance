@@ -1,133 +1,147 @@
+// app/dashboard/page.js
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from "../lib/supabase/client"
-import { getStudents, getClasses } from "../lib/supabase/queries"
-import { toast } from 'sonner'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { toast } from 'sonner'
+import { Plus, X, User, BookOpen, Calendar, Phone, Mail } from 'lucide-react'
+
+// Import server actions
+import { getStudents, getClasses, getStudentsCount } from './actions/students'
+import { getAllUsersNoRestriction } from './actions/users'
+import { getStudentsWithPresentFalse, getAbsentStudentsByDateRange } from './actions/absence'
+import { createStudent } from './actions/students'
 
 export default function Dashboard() {
-  const router = useRouter()
-  const [currentUser, setCurrentUser] = useState(null)
-  const [userDetails, setUserDetails] = useState(null)
-  const [authChecked, setAuthChecked] = useState(false)
   const [classes, setClasses] = useState([])
   const [students, setStudents] = useState([])
   const [users, setUsers] = useState([])
-  const [seances, setSeances] = useState([])
-  const [todayAttendance, setTodayAttendance] = useState(0)
+  const [todayAbsenceCount, setTodayAbsenceCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [recentAbsences, setRecentAbsences] = useState([])
+  const [currentlyAbsent, setCurrentlyAbsent] = useState([])
+  const [studentsCount, setStudentsCount] = useState(0)
+  
+  // Modal states
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false)
+  const [addingStudent, setAddingStudent] = useState(false)
+  const [newStudent, setNewStudent] = useState({
+    num_eleve: '',
+    nom: '',
+    prenom: '',
+    date_naissance: '',
+    id_class: '',
+    pere: '',
+    mere: '',
+    phone: '',
+    email: '',
+    adresse: ''
+  })
 
-  // Check authentication first
   useEffect(() => {
-    checkAuth()
+    loadDashboardData()
   }, [])
 
-  async function checkAuth() {
-    const { data: { user }, error } = await supabase.auth.getUser()
-    
-    if (error || !user) {
-      console.log('No user found, redirecting to login...')
-      router.push('/login')
-      return
-    }
-    
-    setCurrentUser(user)
-    
-    // Get user details from users table
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('matricule', user.user_metadata?.matricule)
-      .single()
-    
-    if (!userError && userData) {
-      setUserDetails(userData)
-    }
-    
-    setAuthChecked(true)
-    loadData()
-    getTodayAttendance()
-    getRecentAbsences()
-    getUsers()
-    getSeances()
-  }
-
-  async function loadData() {
+  async function loadDashboardData() {
     try {
-      const classesData = await getClasses()
-      setClasses(classesData || [])
+      setLoading(true)
       
-      const studentsData = await getStudents()
+      const today = new Date().toISOString().split('T')[0]
+      
+      // Get all required data
+      const [studentsData, classesData, usersRes, todayAbsencesRes, currentAbsencesRes, studentsCountRes] = await Promise.all([
+        getStudents(),
+        getClasses(),
+        getAllUsersNoRestriction(),
+        getAbsentStudentsByDateRange(today),
+        getStudentsWithPresentFalse(),
+        getStudentsCount()
+      ])
+
       setStudents(studentsData || [])
+      setClasses(classesData || [])
+      setUsers(usersRes?.users || [])
+      
+      // Set students count
+      if (studentsCountRes.success) {
+        setStudentsCount(studentsCountRes.count)
+      } else {
+        setStudentsCount(studentsData?.length || 0)
+      }
+      
+      // Handle today's absences
+      const todayAbsences = todayAbsencesRes?.data || []
+      setRecentAbsences(todayAbsences.slice(0, 5))
+      setTodayAbsenceCount(todayAbsences.length)
+      
+      // Handle currently absent students (active absences)
+      if (currentAbsencesRes.success) {
+        setCurrentlyAbsent(currentAbsencesRes.data || [])
+      }
+      
     } catch (error) {
+      console.error('Error loading dashboard:', error)
       toast.error('خطأ في تحميل البيانات')
-      console.error(error)
     } finally {
       setLoading(false)
     }
   }
 
-  async function getUsers() {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
+  const handleAddStudent = async (e) => {
+    e.preventDefault()
     
-    if (!error && data) {
-      setUsers(data)
+    // Validation
+    if (!newStudent.num_eleve || !newStudent.nom || !newStudent.prenom || !newStudent.id_class) {
+      toast.error('الرجاء تعبئة جميع الحقول المطلوبة')
+      return
     }
-  }
-
-  async function getSeances() {
-    const { data, error } = await supabase
-      .from('seance')
-      .select('*')
     
-    if (!error && data) {
-      setSeances(data)
-    }
-  }
-
-  async function getTodayAttendance() {
-    const today = new Date().toISOString().split('T')[0]
-    const { data, error } = await supabase
-      .from('absence')
-      .select('*', { count: 'exact' })
-      .eq('date_deb', today)
+    setAddingStudent(true)
     
-    if (!error && data) {
-      setTodayAttendance(data.length)
-    }
-  }
-
-  async function getRecentAbsences() {
-    const { data, error } = await supabase
-      .from('absence')
-      .select(`
-        *,
-        eleve (nom, id_eleve)
-      `)
-      .order('date_deb', { ascending: false })
-      .limit(5)
-    
-    if (!error && data) {
-      setRecentAbsences(data)
+    try {
+      const result = await createStudent(newStudent)
+      
+      if (result.success) {
+        toast.success('تم إضافة التلميذ بنجاح')
+        setIsAddStudentModalOpen(false)
+        setNewStudent({
+          num_eleve: '',
+          nom: '',
+          prenom: '',
+          date_naissance: '',
+          id_class: '',
+          pere: '',
+          mere: '',
+          phone: '',
+          email: '',
+          adresse: ''
+        })
+        // Refresh dashboard data
+        await loadDashboardData()
+      } else {
+        toast.error(result.error || 'حدث خطأ في إضافة التلميذ')
+      }
+    } catch (error) {
+      console.error('Error adding student:', error)
+      toast.error('حدث خطأ في إضافة التلميذ')
+    } finally {
+      setAddingStudent(false)
     }
   }
 
   const getRoleLabel = (role) => {
     switch(role) {
       case 'admin': return 'مدير'
+      case 'manager': return 'مدير'
       case 'teacher': return 'أستاذ'
       case 'parent': return 'ولي أمر'
+      case 'student': return 'تلميذ'
       default: return 'مستخدم'
     }
   }
 
-  // Show loading while checking auth
-  if (!authChecked || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
@@ -148,7 +162,7 @@ export default function Dashboard() {
     },
     {
       title: 'التلاميذ',
-      value: students.length,
+      value: studentsCount,
       icon: '👨‍🎓',
       color: 'bg-green-500',
       link: '/students'
@@ -162,31 +176,15 @@ export default function Dashboard() {
     },
     {
       title: 'غيابات اليوم',
-      value: todayAttendance,
+      value: todayAbsenceCount,
       icon: '📝',
       color: 'bg-yellow-500',
       link: '/attendance'
     },
-    {
-      title: 'الأقسام النشطة',
-      value: classes.filter(c => c.nstudent > 0).length,
-      icon: '🏫',
-      color: 'bg-purple-500',
-      link: '/classes'
-    },
-    {
-      title: 'الحصص',
-      value: seances.length,
-      icon: '📅',
-      color: 'bg-indigo-500',
-      link: '/seances'
-    },
   ]
 
   return (
-    <div className="max-w-7xl mx-auto">
-     
-
+    <div className="max-w-7xl mx-auto" dir="rtl">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">لوحة التحكم</h1>
@@ -194,7 +192,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat) => (
           <Link
             key={stat.title}
@@ -219,65 +217,46 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">إجراءات سريعة</h2>
           <div className="space-y-3">
-            <Link
-              href="/attendance"
-              className="flex items-center justify-between w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-lg transition-colors"
-            >
-              <span className="font-medium">📝 تسجيل حضور اليوم</span>
+            <Link href="/profile" className="flex items-center justify-between w-full bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-3 rounded-lg transition">
+              <span>👤 تعديل الملف الشخصي</span>
               <span>←</span>
             </Link>
-            <Link
-              href="/students/new"
-              className="flex items-center justify-between w-full bg-green-50 hover:bg-green-100 text-green-700 px-4 py-3 rounded-lg transition-colors"
-            >
-              <span className="font-medium">➕ إضافة طالب جديد</span>
+            <Link href="/attendance" className="flex items-center justify-between w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-lg transition">
+              <span>📝 تسجيل حضور اليوم</span>
               <span>←</span>
             </Link>
-            <Link
-              href="/users/new"
-              className="flex items-center justify-between w-full bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-3 rounded-lg transition-colors"
+            <button
+              onClick={() => setIsAddStudentModalOpen(true)}
+              className="flex items-center justify-between w-full bg-green-50 hover:bg-green-100 text-green-700 px-4 py-3 rounded-lg transition"
             >
-              <span className="font-medium">👥 إضافة مستخدم جديد</span>
+              <span>➕ إضافة تلميذ جديد</span>
               <span>←</span>
-            </Link>
-            <Link
-              href="/classes/new"
-              className="flex items-center justify-between w-full bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-3 rounded-lg transition-colors"
-            >
-              <span className="font-medium">📖 إنشاء فصل جديد</span>
-              <span>←</span>
-            </Link>
-            <Link
-              href="/sanctions/new"
-              className="flex items-center justify-between w-full bg-red-50 hover:bg-red-100 text-red-700 px-4 py-3 rounded-lg transition-colors"
-            >
-              <span className="font-medium">⚠️ إضافة عقوبة</span>
+            </button>
+            <Link href="/users/new" className="flex items-center justify-between w-full bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-3 rounded-lg transition">
+              <span>👥 إضافة مستخدم جديد</span>
               <span>←</span>
             </Link>
           </div>
         </div>
 
-        {/* Recent Absences */}
+        {/* Currently Absent Students */}
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">أحدث حالات الغياب</h2>
-          {recentAbsences.length === 0 ? (
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">التلاميذ الغائبين حالياً</h2>
+          {currentlyAbsent.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <div className="text-4xl mb-2">✅</div>
-              <p>لا توجد غيابات حديثة</p>
+              <p>لا يوجد تلاميذ غائبين حالياً</p>
+              <p className="text-sm text-gray-400 mt-2">جميع التلاميذ حاضرون</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {recentAbsences.map((absence) => (
-                <div key={absence.id} className="flex items-center justify-between border-b pb-3">
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {currentlyAbsent.map((student) => (
+                <div key={student.id_eleve} className="flex justify-between items-center border-b pb-3">
                   <div>
-                    <p className="font-medium text-gray-900">{absence.eleve?.nom || 'غير معروف'}</p>
-                    <p className="text-sm text-gray-500">
-                      {absence.date_deb} {absence.heure_deb ? `الساعة ${absence.heure_deb}` : ''}
-                    </p>
+                    <p className="font-medium">{student.nom}</p>
+                    <p className="text-sm text-gray-500">{student.class_libelle}</p>
                   </div>
-                  <span className={`px-2 py-1 text-xs rounded-full ${absence.justified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {absence.justified ? 'مبرر' : 'غير مبرر'}
-                  </span>
+                  <span className="text-sm text-red-600">غائب</span>
                 </div>
               ))}
             </div>
@@ -285,88 +264,294 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Recent Absences Section */}
+      <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">غيابات اليوم</h2>
+          <Link href="/attendance" className="text-blue-600 text-sm hover:underline">عرض الكل ←</Link>
+        </div>
+        {recentAbsences.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-4xl mb-2">✅</div>
+            <p>لا توجد غيابات مسجلة اليوم</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-right py-3 px-4">اسم التلميذ</th>
+                  <th className="text-right py-3 px-4">القسم</th>
+                  <th className="text-right py-3 px-4">وقت الغياب</th>
+                  <th className="text-right py-3 px-4">الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentAbsences.map((absence) => (
+                  <tr key={absence.id} className="border-b hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium">{absence.student_name}</td>
+                    <td className="py-3 px-4">{absence.class_libelle}</td>
+                    <td className="py-3 px-4">{absence.absence_start_time || '—'}</td>
+                    <td className="py-3 px-4">
+                      <span className={`text-sm ${absence.justified ? 'text-green-600' : 'text-red-600'}`}>
+                        {absence.justified ? 'مبرر' : 'غير مبرر'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Users Table */}
       <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900">المستخدمين</h2>
-          <Link href="/users" className="text-blue-600 hover:text-blue-800 text-sm">
+          <h2 className="text-xl font-semibold">أحدث المستخدمين</h2>
+          <Link href="/users" className="text-blue-600 text-sm hover:underline">
             عرض الكل ←
           </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-right py-3 px-4">المعرف</th>
-                <th className="text-right py-3 px-4">الاسم</th>
-                <th className="text-right py-3 px-4">اللقب</th>
-                <th className="text-right py-3 px-4">الدور</th>
-                <th className="text-right py-3 px-4">البريد</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.slice(0, 5).map((user) => (
-                <tr key={user.matricule} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-4 font-mono text-sm">{user.matricule}</td>
-                  <td className="py-3 px-4">{user.nom || '-'}</td>
-                  <td className="py-3 px-4">{user.prenom || '-'}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 
-                      user.role === 'teacher' ? 'bg-blue-100 text-blue-700' : 
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {getRoleLabel(user.role)}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-500">{user.email || '-'}</td>
+        {users.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">لا يوجد مستخدمين</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-right py-3 px-4">المعرف</th>
+                  <th className="text-right py-3 px-4">الاسم</th>
+                  <th className="text-right py-3 px-4">اللقب</th>
+                  <th className="text-right py-3 px-4">الدور</th>
+                  <th className="text-right py-3 px-4">البريد</th>
                 </tr>
-              ))}
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-500">
-                    لا يوجد مستخدمين
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {users.slice(0, 5).map((user) => (
+                  <tr key={user.matricule} className="border-b hover:bg-gray-50">
+                    <td className="py-3 px-4 font-mono text-sm">{user.matricule}</td>
+                    <td className="py-3 px-4">{user.nom}</td>
+                    <td className="py-3 px-4">{user.prenom || '-'}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        user.role === 'admin' ? 'bg-red-100 text-red-700' :
+                        user.role === 'manager' ? 'bg-purple-100 text-purple-700' :
+                        user.role === 'teacher' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {getRoleLabel(user.role)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">{user.email || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-center mt-4 pt-3 border-t">
+              <Link href="/users" className="text-blue-600 text-sm hover:underline">
+                عرض جميع المستخدمين ({users.length})
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Top Classes */}
-      <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">نظرة عامة على الأقسام</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-right py-3 px-4">معرف القسم</th>
-                <th className="text-right py-3 px-4">اسم القسم</th>
-                <th className="text-right py-3 px-4">عدد التلاميذ</th>
-                <th className="text-right py-3 px-4">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {classes.slice(0, 5).map((classItem) => (
-                <tr key={classItem.id_class} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-4 font-mono text-sm">{classItem.id_class}</td>
-                  <td className="py-3 px-4">{classItem.ilbella || '-'}</td>
-                  <td className="py-3 px-4">{classItem.nstudent || 0}</td>
-                  <td className="py-3 px-4">
-                    <Link
-                      href={`/students?class=${classItem.id_class}`}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      عرض التلاميذ ←
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Add Student Modal */}
+      {isAddStudentModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-bold text-gray-800">إضافة تلميذ جديد</h2>
+              <button
+                onClick={() => setIsAddStudentModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleAddStudent} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Numéro d'étudiant */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User size={16} className="inline ml-1" />
+                    رقم التسجيل *
+                  </label>
+                  <input
+                    type="text"
+                    value={newStudent.num_eleve}
+                    onChange={(e) => setNewStudent({...newStudent, num_eleve: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="مثال: 2024001"
+                    required
+                  />
+                </div>
+
+                {/* Nom */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User size={16} className="inline ml-1" />
+                    الاسم *
+                  </label>
+                  <input
+                    type="text"
+                    value={newStudent.nom}
+                    onChange={(e) => setNewStudent({...newStudent, nom: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="الاسم"
+                    required
+                  />
+                </div>
+
+                {/* Prénom */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User size={16} className="inline ml-1" />
+                    اللقب *
+                  </label>
+                  <input
+                    type="text"
+                    value={newStudent.prenom}
+                    onChange={(e) => setNewStudent({...newStudent, prenom: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="اللقب"
+                    required
+                  />
+                </div>
+
+                {/* Date de naissance */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Calendar size={16} className="inline ml-1" />
+                    تاريخ الولادة
+                  </label>
+                  <input
+                    type="date"
+                    value={newStudent.date_naissance}
+                    onChange={(e) => setNewStudent({...newStudent, date_naissance: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Class */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <BookOpen size={16} className="inline ml-1" />
+                    القسم *
+                  </label>
+                  <select
+                    value={newStudent.id_class}
+                    onChange={(e) => setNewStudent({...newStudent, id_class: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">اختر القسم</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id_class} value={cls.id_class}>
+                        {cls.libelle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Père */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    اسم الأب
+                  </label>
+                  <input
+                    type="text"
+                    value={newStudent.pere}
+                    onChange={(e) => setNewStudent({...newStudent, pere: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="اسم الأب"
+                  />
+                </div>
+
+                {/* Mère */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    اسم الأم
+                  </label>
+                  <input
+                    type="text"
+                    value={newStudent.mere}
+                    onChange={(e) => setNewStudent({...newStudent, mere: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="اسم الأم"
+                  />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Phone size={16} className="inline ml-1" />
+                    رقم الهاتف
+                  </label>
+                  <input
+                    type="tel"
+                    value={newStudent.phone}
+                    onChange={(e) => setNewStudent({...newStudent, phone: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="رقم الهاتف"
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Mail size={16} className="inline ml-1" />
+                    البريد الإلكتروني
+                  </label>
+                  <input
+                    type="email"
+                    value={newStudent.email}
+                    onChange={(e) => setNewStudent({...newStudent, email: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="البريد الإلكتروني"
+                  />
+                </div>
+
+                {/* Adresse - full width */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    العنوان
+                  </label>
+                  <textarea
+                    value={newStudent.adresse}
+                    onChange={(e) => setNewStudent({...newStudent, adresse: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    rows="3"
+                    placeholder="العنوان الكامل"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex gap-3 justify-end mt-6 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStudentModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingStudent}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {addingStudent ? 'جاري الإضافة...' : 'إضافة'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
