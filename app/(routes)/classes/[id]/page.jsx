@@ -1,22 +1,34 @@
+// app/(dashboard)/classes/[id]/page.jsx
 import SingleClass from './SingleClass'
-import { supabase } from '../../../../lib/supabase/client'
+import { createClient } from '../../../../lib/supabase/server'
+import { notFound } from 'next/navigation'
 
 export default async function page({ params }) {
+  const supabase = await createClient() // ✅ Added await here
   const { id } = await params
   
   // Fetch class info
-  const { data: classInfo } = await supabase
+  const { data: classInfo, error: classError } = await supabase
     .from('classes')
     .select('*')
     .eq('id_class', id)
     .single()
   
+  if (classError || !classInfo) {
+    console.error('Class fetch error:', classError)
+    notFound()
+  }
+  
   // Fetch students in this class
-  const { data: students } = await supabase
+  const { data: students, error: studentsError } = await supabase
     .from('eleve')
     .select('*')
     .eq('id_class', id)
     .order('nom')
+  
+  if (studentsError) {
+    console.error('Students fetch error:', studentsError)
+  }
   
   // Calculate statistics
   const totalStudents = students?.length || 0
