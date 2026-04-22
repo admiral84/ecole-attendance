@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase/client'
 import { toast } from 'sonner'
-import { createUser } from '../../../actions/users'
+import { createUser } from '../../actions/users'
 
 export default function AuthCallbackPage() {
   const router = useRouter()

@@ -232,10 +232,7 @@ export default function Dashboard() {
               <span>➕ إضافة تلميذ جديد</span>
               <span>←</span>
             </button>
-            <Link href="/users/new" className="flex items-center justify-between w-full bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-3 rounded-lg transition">
-              <span>👥 إضافة مستخدم جديد</span>
-              <span>←</span>
-            </Link>
+            
           </div>
         </div>
 

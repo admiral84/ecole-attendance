@@ -15,6 +15,7 @@ export default function CompleteProfilePage() {
   const [seances, setSeances] = useState([])
   const [selectedCell, setSelectedCell] = useState(null)
   const [mobileView, setMobileView] = useState(false)
+  const [tabletView, setTableView] = useState(false)
   const [selectedDayForMobile, setSelectedDayForMobile] = useState('lundi')
   const [selectedMatiere, setSelectedMatiere] = useState('')
   const [currentSeance, setCurrentSeance] = useState({
@@ -51,7 +52,9 @@ export default function CompleteProfilePage() {
     
     // Check screen size for responsive view
     const handleResize = () => {
-      setMobileView(window.innerWidth < 768)
+      const width = window.innerWidth
+      setMobileView(width < 768)
+      setTableView(width >= 768 && width < 1024)
     }
     
     handleResize()
@@ -409,17 +412,19 @@ export default function CompleteProfilePage() {
 
   // Mobile Schedule View Component
   function MobileScheduleView() {
+    const [expandedSeance, setExpandedSeance] = useState(null)
+    
     return (
       <div className="space-y-4">
-        {/* Day Selector */}
-        <div className="flex overflow-x-auto gap-2 pb-2">
+        {/* Day Selector - Horizontal Scroll */}
+        <div className="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
           {days.map(day => (
             <button
               key={day.french}
               onClick={() => setSelectedDayForMobile(day.french)}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-all duration-200 ${
                 selectedDayForMobile === day.french
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg transform scale-105'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -436,9 +441,9 @@ export default function CompleteProfilePage() {
             
             if (!seance) {
               return (
-                <div key={timeSlot} className="bg-gray-50 rounded-lg p-3 border">
-                  <div className="text-sm text-gray-500">{timeSlot}</div>
-                  <div className="text-gray-400 text-center py-2">—</div>
+                <div key={timeSlot} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">{timeSlot}</div>
+                  <div className="text-gray-400 text-center py-2 text-sm">—</div>
                 </div>
               )
             }
@@ -449,16 +454,137 @@ export default function CompleteProfilePage() {
               const classLibelle = seance.classes?.libelle || 
                                   classes.find(c => c.id_class === seance.id_classe)?.libelle
               const matiereLibelle = matieres.find(m => m.code_matiere === selectedMatiere)?.libelle
+              const isExpanded = expandedSeance === seance.id
               
               return (
-                <div key={timeSlot} className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className="text-sm font-semibold text-blue-800">
-                        {timeSlot} - {endTime}
-                      </span>
+                <div 
+                  key={timeSlot} 
+                  className={`bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 transition-all duration-200 ${
+                    isExpanded ? 'shadow-lg' : ''
+                  }`}
+                >
+                  <div className="p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-blue-800">
+                          {timeSlot} - {endTime}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setExpandedSeance(isExpanded ? null : seance.id)}
+                          className="p-1 text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => editSeance(seance)}
+                          className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs transition-colors"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          onClick={() => removeSeance(seance.id)}
+                          className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-colors"
+                        >
+                          حذف
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
+                    
+                    <div className="text-center py-2">
+                      <div className="font-medium text-blue-900 text-sm">{classLibelle}</div>
+                      <div className="text-xs text-blue-700 mt-1">{matiereLibelle}</div>
+                    </div>
+                    
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-blue-200 text-xs text-gray-600 space-y-1">
+                        <div>⏰ الوقت: {timeSlot} - {endTime}</div>
+                        <div>📚 القسم: {classLibelle}</div>
+                        <div>📖 المادة: {matiereLibelle}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+            
+            return null
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Tablet Schedule View Component
+  function TabletScheduleView() {
+    const [selectedDay, setSelectedDay] = useState('lundi')
+    
+    return (
+      <div className="space-y-4">
+        {/* Day Selector Grid */}
+        <div className="grid grid-cols-3 gap-2">
+          {days.map(day => (
+            <button
+              key={day.french}
+              onClick={() => setSelectedDay(day.french)}
+              className={`px-3 py-2 rounded-lg text-center transition-all duration-200 ${
+                selectedDay === day.french
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <div className="text-sm font-medium">{day.arabic}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Schedule Grid for Selected Day */}
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="grid grid-cols-2 gap-0 divide-x divide-gray-200">
+            <div className="bg-gray-50 p-3 text-center font-semibold text-gray-700 text-sm">
+              الوقت
+            </div>
+            <div className="bg-gray-50 p-3 text-center font-semibold text-gray-700 text-sm">
+              الحصة
+            </div>
+            
+            {timeSlots.map((timeSlot, index) => {
+              const seance = getSeanceForTimeSlot(selectedDay, timeSlot)
+              const isStart = isStartOfSeance(selectedDay, timeSlot)
+              
+              if (!seance || !isStart) {
+                return (
+                  <>
+                    <div key={`${timeSlot}-time`} className="p-3 text-center text-gray-500 text-xs border-t">
+                      {timeSlot}
+                    </div>
+                    <div key={`${timeSlot}-content`} className="p-3 text-center text-gray-400 border-t">
+                      —
+                    </div>
+                  </>
+                )
+              }
+              
+              const colspan = getColSpan(selectedDay, timeSlot)
+              const endTime = timeSlots[index + colspan - 1]
+              const classLibelle = seance.classes?.libelle || 
+                                  classes.find(c => c.id_class === seance.id_classe)?.libelle
+              const matiereLibelle = matieres.find(m => m.code_matiere === selectedMatiere)?.libelle
+              
+              return (
+                <>
+                  <div key={`${timeSlot}-time`} className="p-3 text-center text-gray-700 text-xs font-medium border-t bg-blue-50">
+                    {timeSlot} - {endTime}
+                  </div>
+                  <div className="p-3 border-t bg-blue-50">
+                    <div className="text-center">
+                      <div className="font-medium text-blue-900 text-sm">{classLibelle}</div>
+                      <div className="text-xs text-blue-700 mt-1">{matiereLibelle}</div>
+                    </div>
+                    <div className="flex justify-center gap-2 mt-2">
                       <button
                         onClick={() => editSeance(seance)}
                         className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs"
@@ -473,84 +599,110 @@ export default function CompleteProfilePage() {
                       </button>
                     </div>
                   </div>
-                  <div className="text-center py-2">
-                    <div className="font-medium text-blue-900">{classLibelle}</div>
-                    <div className="text-sm text-blue-700 mt-1">{matiereLibelle}</div>
-                  </div>
-                </div>
+                </>
               )
-            }
-            
-            return null
-          })}
+            })}
+          </div>
         </div>
       </div>
     )
   }
 
+  // Subject Selection Component
+  function SubjectSelection() {
+    const [searchTerm, setSearchTerm] = useState('')
+    
+    const filteredMatieres = matieres.filter(matiere =>
+      matiere.libelle.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-8 border-2 border-purple-200">
+        <h2 className="text-lg sm:text-xl font-bold mb-4 text-purple-800">اختر المادة التي تدرسها</h2>
+        <p className="text-sm text-gray-600 mb-4">سيتم تطبيق هذه المادة على جميع حصصك في الجدول</p>
+        
+        {/* Search Input for mobile/tablet */}
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="بحث عن مادة..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full p-2 sm:p-3 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+          />
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+          {filteredMatieres.map(matiere => (
+            <button
+              key={matiere.code_matiere}
+              onClick={() => setSelectedMatiere(matiere.code_matiere)}
+              className="px-3 sm:px-4 py-2 bg-white hover:bg-purple-100 border border-purple-300 rounded-lg transition-all duration-200 text-right text-sm sm:text-base hover:shadow-md"
+            >
+              {matiere.libelle}
+            </button>
+          ))}
+        </div>
+        
+        {filteredMatieres.length === 0 && (
+          <div className="text-center py-4 text-gray-500 text-sm">
+            لا توجد مواد匹配 بحثك
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-gray-100 py-4 sm:py-8 px-2 sm:px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-gray-100 py-3 sm:py-6 md:py-8 px-2 sm:px-4">
       <div className="container mx-auto max-w-7xl">
         
         {/* Header */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-8">
-          <h1 className="text-xl sm:text-3xl font-bold text-center mb-2">إكمال الملف الشخصي</h1>
-          <p className="text-sm sm:text-base text-center text-gray-600">قم بإضافة جدول حصصك الأسبوعي</p>
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-center mb-2">إكمال الملف الشخصي</h1>
+          <p className="text-xs sm:text-sm md:text-base text-center text-gray-600">قم بإضافة جدول حصصك الأسبوعي</p>
         </div>
 
-        {/* Subject Selection Card - Only shown if no subject selected yet */}
-        {!selectedMatiere && (
-          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-8 border-2 border-purple-200">
-            <h2 className="text-lg sm:text-xl font-bold mb-4 text-purple-800">اختر المادة التي تدرسها</h2>
-            <p className="text-sm text-gray-600 mb-4">سيتم تطبيق هذه المادة على جميع حصصك في الجدول</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {matieres.map(matiere => (
-                <button
-                  key={matiere.code_matiere}
-                  onClick={() => setSelectedMatiere(matiere.code_matiere)}
-                  className="px-4 py-2 bg-white hover:bg-purple-100 border border-purple-300 rounded-lg transition-colors text-right"
-                >
-                  {matiere.libelle}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Subject Selection Card */}
+        {!selectedMatiere && <SubjectSelection />}
 
-        {/* Show selected subject badge */}
+        {/* Selected Subject Badge */}
         {selectedMatiere && (
-          <div className="bg-green-50 rounded-xl shadow-xl p-3 sm:p-4 mb-4 sm:mb-8 border border-green-200 flex justify-between items-center">
-            <div>
-              <span className="text-sm text-gray-600">المادة المختارة:</span>
-              <span className="font-bold text-green-800 mr-2">
-                {matieres.find(m => m.code_matiere === selectedMatiere)?.libelle}
-              </span>
+          <div className="bg-green-50 rounded-xl shadow-xl p-3 sm:p-4 mb-4 sm:mb-6 md:mb-8 border border-green-200">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+              <div className="text-center sm:text-right">
+                <span className="text-xs sm:text-sm text-gray-600">المادة المختارة:</span>
+                <span className="font-bold text-green-800 mr-2 text-sm sm:text-base">
+                  {matieres.find(m => m.code_matiere === selectedMatiere)?.libelle}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedMatiere('')}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs sm:text-sm transition-colors"
+              >
+                تغيير المادة
+              </button>
             </div>
-            <button
-              onClick={() => setSelectedMatiere('')}
-              className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm"
-            >
-              تغيير المادة
-            </button>
           </div>
         )}
 
-        {/* Add/Edit Seance Form - Only show if subject is selected */}
+        {/* Main Content - Only show if subject is selected */}
         {selectedMatiere && (
           <>
-            <div id="seance-form" className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-8">
+            {/* Add/Edit Seance Form */}
+            <div id="seance-form" className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
               <h2 className="text-lg sm:text-xl font-bold mb-4">
                 {selectedCell ? 'تعديل الحصة' : 'إضافة حصة جديدة'}
               </h2>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">اليوم</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">اليوم</label>
                   <select
                     name="jour"
                     value={currentSeance.jour}
                     onChange={handleSeanceChange}
-                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
                     {days.map(day => (
                       <option key={day.french} value={day.french}>
@@ -561,12 +713,12 @@ export default function CompleteProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">بداية الحصة</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">بداية الحصة</label>
                   <select
                     name="debut_heure"
                     value={currentSeance.debut_heure}
                     onChange={handleSeanceChange}
-                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
                     {startTimes.map(time => (
                       <option key={time} value={time}>
@@ -577,12 +729,12 @@ export default function CompleteProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">نهاية الحصة</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">نهاية الحصة</label>
                   <select
                     name="fin_heure"
                     value={currentSeance.fin_heure}
                     onChange={handleSeanceChange}
-                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
                     {endTimes.map(time => (
                       <option key={time} value={time}>
@@ -593,12 +745,12 @@ export default function CompleteProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">القسم</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">القسم</label>
                   <select
                     name="id_classe"
                     value={currentSeance.id_classe}
                     onChange={handleSeanceChange}
-                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
                     <option value="">اختر القسم</option>
                     {classes.map(cls => (
@@ -613,7 +765,7 @@ export default function CompleteProfilePage() {
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={addOrUpdateSeance}
-                  className="px-4 sm:px-6 py-2 sm:py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors text-sm sm:text-base"
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transition-all duration-200 text-sm sm:text-base"
                 >
                   {selectedCell ? 'تحديث الحصة' : '+ إضافة الحصة'}
                 </button>
@@ -637,29 +789,31 @@ export default function CompleteProfilePage() {
             </div>
 
             {/* Schedule Display - Responsive */}
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-8">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
               <h2 className="text-lg sm:text-xl font-bold mb-4">جدول الحصص الأسبوعي</h2>
               
               {mobileView ? (
                 <MobileScheduleView />
+              ) : tabletView ? (
+                <TabletScheduleView />
               ) : (
                 /* Desktop Table View */
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse">
                     <thead>
                       <tr className="bg-gray-100">
-                        <th className="border p-2 sm:p-3 text-center sticky right-0 bg-gray-100 w-24 sm:w-32 text-sm sm:text-base">
+                        <th className="border p-2 sm:p-3 text-center sticky right-0 bg-gray-100 w-24 sm:w-32 text-sm">
                           اليوم / الوقت
                         </th>
                         {timeSlots.map(time => (
-                          <th key={time} className="border p-2 sm:p-3 text-center min-w-[80px] sm:min-w-[100px] text-sm sm:text-base">
+                          <th key={time} className="border p-2 sm:p-3 text-center min-w-[80px] sm:min-w-[100px] text-sm">
                             {time}
                           </th>
                         ))}
-                        <th className="border p-2 sm:p-3 text-center sticky left-0 bg-gray-100 w-20 sm:w-24 text-sm sm:text-base">
+                        <th className="border p-2 sm:p-3 text-center sticky left-0 bg-gray-100 w-20 sm:w-24 text-sm">
                           إجراءات
                         </th>
-                       </tr>
+                      </tr>
                     </thead>
                     <tbody>
                       {days.map(day => {
@@ -684,9 +838,9 @@ export default function CompleteProfilePage() {
                                 className="border p-0"
                               >
                                 <div className="relative group">
-                                  <div className="p-2 sm:p-3 bg-blue-50 min-h-[50px] sm:min-h-[60px]">
+                                  <div className="p-2 sm:p-3 bg-gradient-to-r from-blue-50 to-indigo-50 min-h-[50px] sm:min-h-[60px]">
                                     <div className="text-center">
-                                      <div className="font-medium text-blue-800 text-sm sm:text-base">
+                                      <div className="font-medium text-blue-800 text-sm">
                                         {classLibelle}
                                       </div>
                                       <div className="text-xs text-blue-600 mt-1">
@@ -696,20 +850,20 @@ export default function CompleteProfilePage() {
                                     <div className="hidden group-hover:flex gap-1 absolute top-1 left-1">
                                       <button
                                         onClick={() => editSeance(seance)}
-                                        className="px-1 sm:px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs"
+                                        className="px-1 sm:px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs transition-colors"
                                       >
                                         تعديل
                                       </button>
                                       <button
                                         onClick={() => removeSeance(seance.id)}
-                                        className="px-1 sm:px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                                        className="px-1 sm:px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-colors"
                                       >
                                         حذف
                                       </button>
                                     </div>
                                   </div>
                                 </div>
-                               </td>
+                              </td>
                             )
                             currentColIndex += colspan
                           } else if (!seance) {
@@ -718,10 +872,10 @@ export default function CompleteProfilePage() {
                                 key={currentTimeSlot} 
                                 className="border p-0"
                               >
-                                <div className="p-2 sm:p-3 text-gray-300 text-center min-h-[50px] sm:min-h-[60px] flex items-center justify-center text-sm sm:text-base">
+                                <div className="p-2 sm:p-3 text-gray-300 text-center min-h-[50px] sm:min-h-[60px] flex items-center justify-center text-sm">
                                   —
                                 </div>
-                               </td>
+                              </td>
                             )
                             currentColIndex++
                           } else {
@@ -730,10 +884,10 @@ export default function CompleteProfilePage() {
                         }
                         
                         return (
-                          <tr key={day.french} className="hover:bg-gray-50">
-                            <td className="border p-2 sm:p-3 text-center font-semibold sticky right-0 bg-white text-sm sm:text-base">
+                          <tr key={day.french} className="hover:bg-gray-50 transition-colors">
+                            <td className="border p-2 sm:p-3 text-center font-semibold sticky right-0 bg-white text-sm">
                               {day.arabic}
-                             </td>
+                            </td>
                             {cells}
                             <td className="border p-2 sm:p-3 text-center sticky left-0 bg-white">
                               <button
@@ -743,12 +897,12 @@ export default function CompleteProfilePage() {
                                     editSeance(daySeance)
                                   }
                                 }}
-                                className="px-2 sm:px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs sm:text-sm"
+                                className="px-2 sm:px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs sm:text-sm transition-colors"
                               >
                                 إدارة
                               </button>
-                             </td>
-                           </tr>
+                            </td>
+                          </tr>
                         )
                       })}
                     </tbody>
@@ -757,7 +911,7 @@ export default function CompleteProfilePage() {
               )}
               
               {seances.length === 0 && (
-                <div className="text-center py-8 text-gray-500 text-sm sm:text-base">
+                <div className="text-center py-8 text-gray-500 text-sm">
                   لا توجد حصص مضافة. قم بإضافة حصصك باستخدام النموذج أعلاه
                 </div>
               )}
@@ -767,10 +921,10 @@ export default function CompleteProfilePage() {
             {seances.length > 0 && (
               <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
                 <div className="bg-white rounded-xl shadow p-3 sm:p-4">
-                  <h3 className="font-semibold mb-2 text-sm sm:text-base">إرشادات:</h3>
-                  <ul className="text-xs sm:text-sm text-gray-600 space-y-1">
+                  <h3 className="font-semibold mb-2 text-sm">إرشادات:</h3>
+                  <ul className="text-xs text-gray-600 space-y-1">
                     <li>• مرر الماوس فوق أي حصة لتظهر أزرار التعديل والحذف</li>
-                    <li>• الحصص تمتد أفقياً عبر الساعات المحددة</li>
+                    <li className="hidden sm:block">• الحصص تمتد أفقياً عبر الساعات المحددة</li>
                     <li>• يمكنك تعديل أو حذف أي حصة من الجدول مباشرة</li>
                     <li>• جميع الحصص تحمل نفس المادة التي اخترتها</li>
                   </ul>
@@ -779,9 +933,19 @@ export default function CompleteProfilePage() {
                 <button
                   onClick={saveAllSeances}
                   disabled={loading}
-                  className="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-base sm:text-lg transition-all duration-200 disabled:opacity-50 whitespace-nowrap"
+                  className="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm sm:text-base lg:text-lg transition-all duration-200 disabled:opacity-50 whitespace-nowrap shadow-lg hover:shadow-xl"
                 >
-                  {loading ? 'جاري الحفظ...' : 'حفظ الجدول'}
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      جاري الحفظ...
+                    </span>
+                  ) : (
+                    'حفظ الجدول'
+                  )}
                 </button>
               </div>
             )}
@@ -789,6 +953,16 @@ export default function CompleteProfilePage() {
         )}
 
       </div>
+
+      <style jsx>{`
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   )
 }
