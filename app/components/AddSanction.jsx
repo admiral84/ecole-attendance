@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 
 // Initialize Supabase client for client-side
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+const supabase = createClient(supabaseUrl, supabasePublishableKey )
 
 export default function AddSanction({ studentId, studentName, classId, className, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false)
