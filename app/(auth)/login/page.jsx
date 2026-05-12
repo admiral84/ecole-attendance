@@ -1,11 +1,10 @@
-// app/login/page.js
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { supabase } from '../../../lib/supabase/client'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -15,24 +14,27 @@ export default function LoginPage() {
   const [forgotPassword, setForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
+  const [isChecking, setIsChecking] = useState(true)
   const router = useRouter()
-  
-  // Create browser client
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-  )
 
   // Check for existing session on page load
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.push('/')
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          router.push('/')
+          return
+        }
+      } catch (error) {
+        console.log('No active session')
+      } finally {
+        setIsChecking(false)
       }
     }
+    
     checkSession()
-  }, [router, supabase])
+  }, [router])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -40,6 +42,7 @@ export default function LoginPage() {
     setError(null)
     
     try {
+      // Attempt login first
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -58,44 +61,114 @@ export default function LoginPage() {
       }
       
       if (data?.user) {
-        toast.success('تم تسجيل الدخول بنجاح')
-        router.push('/')
-        router.refresh()
+        // After successful login, check/update user record
+        try {
+          // Check if user exists in users table
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('approved, user_id')
+            .eq('user_id', data.user.id)
+            .maybeSingle()
+          
+          // If no user record exists, create one
+          if (userError || !userData) {
+            console.log('Creating user record for logged-in user')
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert({
+                user_id: data.user.id,
+                email: data.user.email,
+                matricule: data.user.id.substring(0, 8),
+                nom: data.user.user_metadata?.nom || 'مستخدم',
+                prenom: data.user.user_metadata?.prenom || '',
+                role: data.user.user_metadata?.role || 'teacher',
+                approved: true // Auto-approve the user
+              })
+            
+            if (insertError) {
+              console.error('Error creating user record:', insertError)
+            }
+            
+            toast.success('تم تسجيل الدخول بنجاح')
+            router.push('/')
+            router.refresh()
+            setLoading(false)
+            return
+          }
+          
+          // Check if user is approved
+          if (userData && userData.approved === false) {
+            await supabase.auth.signOut()
+            setError('حسابك في انتظار الموافقة من قبل المدير. الرجاء المحاولة لاحقاً.')
+            setLoading(false)
+            return
+          }
+          
+          toast.success('تم تسجيل الدخول بنجاح')
+          router.push('/')
+          router.refresh()
+          
+        } catch (approvalError) {
+          console.error('Error checking approval:', approvalError)
+          // Fallback: Allow login even if approval check fails
+          toast.warning('تم تسجيل الدخول مع تحذير')
+          router.push('/')
+          router.refresh()
+        }
       }
     } catch (err) {
-      console.error('Unexpected error:', err)
-      setError('حدث خطأ غير متوقع')
+      console.error('Login error:', err)
+      setError('حدث خطأ في تسجيل الدخول. الرجاء المحاولة لاحقاً.')
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
-  const handleForgotPassword = async (e) => {
-    e.preventDefault()
-    if (!resetEmail) {
-      toast.error('الرجاء إدخال البريد الإلكتروني')
-      return
-    }
+ const handleForgotPassword = async (e) => {
+  e.preventDefault()
+  
+  const cleanedEmail = resetEmail.trim().toLowerCase()
+  
+  if (!cleanedEmail) {
+    toast.error('الرجاء إدخال البريد الإلكتروني')
+    return
+  }
+  
+  if (!cleanedEmail.includes('@') || !cleanedEmail.includes('.')) {
+    toast.error('صيغة البريد الإلكتروني غير صحيحة')
+    return
+  }
 
-    setResetLoading(true)
+  setResetLoading(true)
+  
+  try {
+    // Call Supabase directly from the client
+    const { data, error } = await supabase.auth.resetPasswordForEmail(cleanedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
     
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
-      
-      if (error) {
-        toast.error(error.message)
-      } else {
-        toast.success('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني')
-        setForgotPassword(false)
-        setResetEmail('')
-      }
-    } catch (err) {
-      toast.error('حدث خطأ غير متوقع')
+    if (error) {
+      console.error('Reset password error:', error)
+      toast.error(`فشل إرسال البريد: ${error.message}`)
+    } else {
+      toast.success('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني')
+      setForgotPassword(false)
+      setResetEmail('')
     }
     
-    setResetLoading(false)
+  } catch (err) {
+    console.error('Unexpected error:', err)
+    toast.error('حدث خطأ غير متوقع. الرجاء المحاولة لاحقاً')
+  }
+  
+  setResetLoading(false)
+}
+  // Show loading while checking session
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   return (
@@ -131,6 +204,7 @@ export default function LoginPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="example@email.com"
                   required
+                  dir="ltr"
                 />
               </div>
               
@@ -161,7 +235,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
@@ -209,21 +283,32 @@ export default function LoginPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="example@email.com"
                   required
+                  dir="ltr"
                 />
               </div>
               
               <button
                 type="submit"
                 disabled={resetLoading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {resetLoading ? 'جاري الإرسال...' : 'إرسال رابط إعادة التعيين'}
+                {resetLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    جاري الإرسال...
+                  </span>
+                ) : (
+                  'إرسال رابط إعادة التعيين'
+                )}
               </button>
               
               <button
                 type="button"
                 onClick={() => setForgotPassword(false)}
-                className="w-full text-center text-sm text-gray-600 hover:text-gray-800"
+                className="w-full text-center text-sm text-gray-600 hover:text-gray-800 transition-colors"
               >
                 ← العودة إلى تسجيل الدخول
               </button>

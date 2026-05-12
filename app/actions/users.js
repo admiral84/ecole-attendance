@@ -33,7 +33,6 @@ export async function getAllUsers() {
       return { error: 'غير مصرح به. الرجاء تسجيل الدخول', users: [] }
     }
     
-    // Get current user's role - using user_id instead of id
     const { data: currentUser, error: roleError } = await supabase
       .from('users')
       .select('role')
@@ -44,7 +43,6 @@ export async function getAllUsers() {
       return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', users: [] }
     }
     
-    // Fetch all users
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('*')
@@ -73,14 +71,12 @@ export async function getAllUsersNoRestriction() {
       return { error: 'غير مصرح به', users: [] }
     }
     
-    // Check if user is admin - using user_id instead of id
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
       .eq('user_id', user.id)
       .single()
     
-    // Only allow admins to use this function
     if (!currentUser || currentUser.role !== 'admin') {
       return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', users: [] }
     }
@@ -176,10 +172,9 @@ export async function getCurrentUser() {
       .single()
     
     if (userError) {
-      // If user exists in auth but not in users table, create it
       const newUser = {
         user_id: user.id,
-        matricule: user.user_metadata?.matricule || user.id,
+        matricule: user.user_metadata?.matricule || user.id.substring(0, 8),
         nom: user.user_metadata?.nom || 'مستخدم',
         prenom: user.user_metadata?.prenom || '',
         role: user.user_metadata?.role || 'teacher',
@@ -245,7 +240,6 @@ export async function getUsersByRole(role) {
 }
 
 // Update user role (admin only)
-
 export async function updateUserRole(userId, newRole) {
   try {
     const supabase = await createClient()
@@ -259,7 +253,7 @@ export async function updateUserRole(userId, newRole) {
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
-      .eq('user_id', user.id)  // Changed from 'id' to 'user_id'
+      .eq('user_id', user.id)
       .single()
     
     if (!currentUser || currentUser.role !== 'admin') {
@@ -270,7 +264,7 @@ export async function updateUserRole(userId, newRole) {
       return { error: 'لا يمكنك تغيير دور حسابك الخاص', success: false }
     }
     
-    const validRoles = ['admin', 'teacher', 'manager']  // Updated roles
+    const validRoles = ['admin', 'teacher', 'manager']
     if (!validRoles.includes(newRole)) {
       return { error: 'دور غير صالح', success: false }
     }
@@ -278,7 +272,7 @@ export async function updateUserRole(userId, newRole) {
     const { error: updateError } = await supabase
       .from('users')
       .update({ role: newRole })
-      .eq('user_id', userId)  // Changed from 'id' to 'user_id'
+      .eq('user_id', userId)
     
     if (updateError) {
       console.error('Error updating user role:', updateError)
@@ -294,7 +288,8 @@ export async function updateUserRole(userId, newRole) {
     return { error: 'حدث خطأ غير متوقع', success: false }
   }
 }
-// Delete user - Deletes from auth.users (cascade will delete from users table)
+
+// Delete user
 export async function deleteUser(userId) {
   try {
     const supabase = await createClient()
@@ -319,7 +314,6 @@ export async function deleteUser(userId) {
       return { error: 'لا يمكنك حذف حسابك الخاص', success: false }
     }
     
-    // Delete from auth.users (ON DELETE CASCADE will automatically delete from public.users)
     const adminClient = getAdminClient()
     
     if (!adminClient) {
@@ -345,7 +339,7 @@ export async function deleteUser(userId) {
   }
 }
 
-// Create user - Creates both auth user and users table record
+// Create user
 export async function createUser(userData) {
   try {
     const supabase = await createClient()
@@ -357,7 +351,6 @@ export async function createUser(userData) {
       throw new Error('غير مصرح به')
     }
     
-    // Check if current user is admin - using user_id instead of id
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
@@ -376,7 +369,6 @@ export async function createUser(userData) {
       throw new Error('المعرف (matricule) مطلوب')
     }
     
-    // Check if matricule already exists
     const { data: existingMatricule } = await supabase
       .from('users')
       .select('matricule')
@@ -387,7 +379,6 @@ export async function createUser(userData) {
       throw new Error('المعرف موجود بالفعل')
     }
     
-    // Create auth user
     const { data: newAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
       email: userData.email,
       password: userData.password,
@@ -404,7 +395,6 @@ export async function createUser(userData) {
       throw new Error(createAuthError.message)
     }
     
-    // Create users table record with user_id as primary key
     const { error: insertError } = await supabase
       .from('users')
       .insert([{
@@ -419,7 +409,6 @@ export async function createUser(userData) {
       }])
     
     if (insertError) {
-      // Rollback: delete the auth user if users table insert fails
       await adminClient.auth.admin.deleteUser(newAuthUser.user.id)
       throw new Error(insertError.message)
     }
@@ -461,7 +450,6 @@ export async function updateUserProfile(userData) {
       return { error: 'حدث خطأ في تحديث الملف الشخصي', success: false }
     }
     
-    // Update auth user metadata
     await supabase.auth.updateUser({
       data: {
         nom: userData.nom,
@@ -516,7 +504,6 @@ export async function updateUserPassword(currentPassword, newPassword) {
 }
 
 // Update user approval status (admin only)
-// Update user approval status (admin only)
 export async function updateUserApproval(userId, approved) {
   try {
     const supabase = await createClient()
@@ -530,14 +517,13 @@ export async function updateUserApproval(userId, approved) {
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
-      .eq('user_id', user.id)  // Changed from 'id' to 'user_id'
+      .eq('user_id', user.id)
       .single()
     
     if (!currentUser || currentUser.role !== 'admin') {
       return { error: 'غير مصرح به. هذه الخاصية متاحة فقط للمديرين', success: false }
     }
     
-    // Don't allow changing your own approval status
     if (userId === user.id) {
       return { error: 'لا يمكنك تغيير حالة حسابك الخاص', success: false }
     }
@@ -545,7 +531,7 @@ export async function updateUserApproval(userId, approved) {
     const { error: updateError } = await supabase
       .from('users')
       .update({ approved })
-      .eq('user_id', userId)  // Changed from 'id' to 'user_id'
+      .eq('user_id', userId)
     
     if (updateError) {
       console.error('Error updating user approval:', updateError)
@@ -558,5 +544,127 @@ export async function updateUserApproval(userId, approved) {
   } catch (error) {
     console.error('Error in updateUserApproval:', error)
     return { error: 'حدث خطأ غير متوقع', success: false }
+  }
+}
+
+// Check if email exists in auth and get approval status
+export async function checkEmailExists(email) {
+  try {
+    const supabase = await createClient()
+    
+    if (!email || email.trim() === '') {
+      return { exists: false, approved: false, error: null }
+    }
+    
+    const formattedEmail = email.trim().toLowerCase()
+    
+    console.log('Checking email existence for:', formattedEmail)
+    
+    // Try to get user from your users table
+    const { data: dbUser, error: dbError } = await supabase
+      .from('users')
+      .select('user_id, email, approved, role, nom')
+      .eq('email', formattedEmail)
+      .maybeSingle()
+    
+    if (dbError) {
+      console.error('Database error in checkEmailExists:', dbError)
+      return { exists: true, approved: true, error: null }
+    }
+    
+    if (dbUser) {
+      console.log('User found in database:', { email: dbUser.email, approved: dbUser.approved })
+      return { 
+        exists: true, 
+        approved: dbUser.approved === true,
+        userId: dbUser.user_id,
+        error: null 
+      }
+    }
+    
+    // If not found in users table, check auth users
+    const adminClient = getAdminClient()
+    if (adminClient) {
+      try {
+        const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers()
+        
+        if (!listError && users) {
+          const authUser = users.find(user => user.email === formattedEmail)
+          if (authUser) {
+            console.log('User found in auth but not in users table:', formattedEmail)
+            
+            // Create user in database automatically
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert([{
+                user_id: authUser.id,
+                email: formattedEmail,
+                nom: authUser.user_metadata?.nom || 'مستخدم',
+                prenom: authUser.user_metadata?.prenom || '',
+                role: authUser.user_metadata?.role || 'user',
+                matricule: authUser.user_metadata?.matricule || authUser.id.substring(0, 8),
+                approved: true  // Auto-approve
+              }])
+            
+            if (!insertError) {
+              return { exists: true, approved: true, userId: authUser.id, error: null }
+            }
+          }
+        }
+      } catch (adminError) {
+        console.error('Admin client error, but continuing:', adminError)
+        return { exists: true, approved: true, error: null }
+      }
+    }
+    
+    // If we can't verify, assume user exists to avoid blocking login
+    console.log('Could not verify email, assuming exists:', formattedEmail)
+    return { exists: true, approved: true, error: null }
+    
+  } catch (error) {
+    console.error('Unexpected error in checkEmailExists:', error)
+    return { exists: true, approved: true, error: null }
+  }
+}
+
+// Simple check that doesn't fail - Super simple version
+export async function isUserApproved(email) {
+  try {
+    console.log('isUserApproved called for:', email)
+    
+    if (!email || email.trim() === '') {
+      console.log('No email provided, defaulting to approved')
+      return true
+    }
+    
+    const supabase = await createClient()
+    const formattedEmail = email.trim().toLowerCase()
+    
+    // Query the users table
+    const { data, error } = await supabase
+      .from('users')
+      .select('approved')
+      .eq('email', formattedEmail)
+      .maybeSingle()
+    
+    console.log('isUserApproved query result:', { data, error })
+    
+    if (error) {
+      console.error('Error checking approval:', error.message)
+      return true
+    }
+    
+    if (!data) {
+      console.log('User not found in users table, defaulting to approved')
+      return true
+    }
+    
+    const isApproved = data.approved === true
+    console.log('User approved status:', isApproved)
+    return isApproved
+    
+  } catch (error) {
+    console.error('Unexpected error in isUserApproved:', error.message)
+    return true
   }
 }

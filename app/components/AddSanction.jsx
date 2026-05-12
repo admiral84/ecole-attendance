@@ -1,18 +1,12 @@
 // components/AddSanction.jsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { useState } from 'react'
 import { toast } from 'sonner'
-
-// Initialize Supabase client for client-side
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-const supabase = createClient(supabaseUrl, supabasePublishableKey )
+import { addSanction } from '../actions/sanctions'
 
 export default function AddSanction({ studentId, studentName, classId, className, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false)
-  const [userId, setUserId] = useState(null)
   const [formData, setFormData] = useState({
     motif: '',
     rapport: '',
@@ -20,45 +14,9 @@ export default function AddSanction({ studentId, studentName, classId, className
     fin: ''
   })
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
-      if (authError || !user) {
-        toast.error('الرجاء تسجيل الدخول أولاً')
-        return
-      }
-      
-      // Get the user_id from the custom users table (this is UUID)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .single()
-      
-      if (userError) {
-        console.error('Error fetching user:', userError)
-        toast.error('حدث خطأ في التحقق من المستخدم')
-        return
-      }
-      
-      if (userData) {
-        setUserId(userData.user_id) // This is the UUID
-      }
-    }
-    
-    getUser()
-  }, [])
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-
-    if (!userId) {
-      toast.error('لم يتم التعرف على المستخدم. يرجى تسجيل الدخول مرة أخرى.')
-      setLoading(false)
-      return
-    }
 
     if (!formData.debut) {
       toast.error('الرجاء إدخال تاريخ بدء العقوبة')
@@ -66,31 +24,31 @@ export default function AddSanction({ studentId, studentName, classId, className
       return
     }
 
+    if (!formData.motif.trim()) {
+      toast.error('الرجاء إدخال سبب العقوبة')
+      setLoading(false)
+      return
+    }
+
     try {
-      const sanctionData = {
-        id_eleve: studentId,
-        id_classe: classId,
-        motif: formData.motif || null,
-        rapport: formData.rapport || null,
-        debut: formData.debut,
-        fin: formData.fin || null,
-        created_by: userId // UUID from users.user_id
-      }
+      const result = await addSanction({
+        studentId: studentId,
+        classId: classId,
+        motif: formData.motif,
+        rapport: formData.rapport,
+        startDate: formData.debut,
+        endDate: formData.fin || null
+      })
 
-      const { error } = await supabase
-        .from('sanctions')
-        .insert([sanctionData])
-
-      if (error) {
-        console.error('Supabase error:', error)
-        toast.error(error.message || 'حدث خطأ في إضافة العقوبة')
-      } else {
+      if (result.success) {
         toast.success('تم إضافة العقوبة بنجاح')
         onSuccess()
         onClose()
+      } else {
+        toast.error(result.error || 'حدث خطأ في إضافة العقوبة')
       }
     } catch (error) {
-      console.error('Error in handleSubmit:', error)
+      console.error('Error:', error)
       toast.error('حدث خطأ غير متوقع')
     } finally {
       setLoading(false)

@@ -1,4 +1,3 @@
-// app/sanctions/page.js
 import { Suspense } from 'react'
 import SanctionsClient from './SanctionsClient'
 import { getSanctions, getSanctionsStats } from '../../actions/sanctions'
@@ -9,15 +8,14 @@ export const dynamic = 'force-dynamic'
 export default async function SanctionsPage({ searchParams }) {
   const params = await searchParams
   
-  // Get filters from URL
-  const filters = {
-    studentId: params?.student || null,
-    classId: params?.class || null,
-    startDate: params?.startDate || null,
-    endDate: params?.endDate || null
-  }
+  // Build filters object from URL params
+  const filters = {}
+  if (params?.student) filters.studentId = params.student
+  if (params?.class) filters.classId = params.class
+  if (params?.startDate) filters.startDate = params.startDate
+  if (params?.endDate) filters.endDate = params.endDate
   
-  // Fetch data
+  // Fetch data in parallel
   const [sanctionsResult, statsResult, classesResult] = await Promise.all([
     getSanctions(filters),
     getSanctionsStats(),
@@ -32,7 +30,6 @@ export default async function SanctionsPage({ searchParams }) {
             initialSanctions={sanctionsResult.data || []}
             stats={statsResult.data || { total: 0, byClass: {}, monthly: {} }}
             classes={classesResult.data || []}
-            filters={filters}
           />
         </Suspense>
       </div>

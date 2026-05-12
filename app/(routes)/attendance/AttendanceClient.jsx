@@ -1,4 +1,3 @@
-// components/AttendanceClient.jsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -9,9 +8,11 @@ import {
   markStudentPresent,
   sendAbsenceNotification
 } from '../../actions/absence'
+import { getCurrentUser } from '../../actions/users'
 import { toast } from 'sonner'
 import { CheckCircle, XCircle, UserCheck, AlertCircle, RefreshCw, GraduationCap, Bell, ArrowLeftCircle, FileText } from 'lucide-react'
 import Billet from '../../components/Billet'
+import { ROLES } from '../../../lib/roles'
 
 export default function AttendanceClient() {
   const [loading, setLoading] = useState(true)
@@ -21,21 +22,68 @@ export default function AttendanceClient() {
   const [selectedClassLibelle, setSelectedClassLibelle] = useState('')
   const [absentStudents, setAbsentStudents] = useState([])
   const [allAbsentStudents, setAllAbsentStudents] = useState([])
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0])
-  const [currentTime, setCurrentTime] = useState(new Date().toTimeString().slice(0, 5))
   const [refreshing, setRefreshing] = useState(false)
   const [viewMode, setViewMode] = useState('all')
   const [selectedAbsence, setSelectedAbsence] = useState(null)
   const [showAbsenceDetails, setShowAbsenceDetails] = useState(false)
+  const [userRole, setUserRole] = useState(null)
   
   // Billet modal state
   const [showBillet, setShowBillet] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [selectedStudentClass, setSelectedStudentClass] = useState('')
 
-  const fetchTeacherClasses = async () => {
-    const result = await getTeacherClasses()
+  // DECLARE handleClassSelect FIRST
+  const handleClassSelect = (classId, classLibelle) => {
+    setSelectedClass(classId)
+    setSelectedClassLibelle(classLibelle)
+  }
+
+  // Fetch current user role on mount
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const { user, error } = await getCurrentUser()
+      if (!error && user) {
+        setUserRole(user.role)
+      }
+    }
+    fetchUserRole()
+  }, [])
+
+  // Fetch data based on user role
+  const fetchInitialData = async () => {
+    setLoading(true)
     
+    const { user, error } = await getCurrentUser()
+    if (error || !user) {
+      toast.error('غير مصرح به')
+      setLoading(false)
+      return
+    }
+    
+    const role = user.role
+    setUserRole(role)
+    
+    if (role === ROLES.TEACHER) {
+      const classesResult = await getTeacherClasses()
+      if (classesResult.success) {
+        setTeacherClasses(classesResult.data)
+        if (classesResult.data.length > 0) {
+          handleClassSelect(classesResult.data[0].id_class, classesResult.data[0].libelle)
+          await fetchAbsentStudentsByClass(classesResult.data[0].id_class)
+        }
+      }
+      setLoading(false)
+    }
+    
+    if (role === ROLES.ADMIN || role === ROLES.MANAGER) {
+      await fetchAllAbsentStudents()
+      setLoading(false)
+    }
+  }
+
+  const fetchTeacherClassesData = async () => {
+    const result = await getTeacherClasses()
     if (result.success) {
       setTeacherClasses(result.data)
     } else {
@@ -46,7 +94,6 @@ export default function AttendanceClient() {
 
   const fetchAllAbsentStudents = async () => {
     setLoading(true)
-    
     const result = await getStudentsWithPresentFalse()
     
     if (result.success) {
@@ -94,24 +141,25 @@ export default function AttendanceClient() {
       toast.error(result.error)
       setAllAbsentStudents({ count: 0, grouped: {}, list: [] })
     }
-    
     setLoading(false)
   }
 
   const fetchAbsentStudentsByClass = async (classId) => {
     if (!classId) return
-    
     setLoading(true)
-    const result = await getAbsentStudentsByClass(classId)
+    const result = await getStudentsWithPresentFalse()
     
     if (result.success) {
-      setAbsentStudents(result.data.map(student => ({
+      const filteredStudents = result.data.filter(
+        student => student.id_class === classId
+      )
+      setAbsentStudents(filteredStudents.map(student => ({
         id_eleve: student.id_eleve,
         nom: student.nom,
         num: student.num,
         justified: student.justified || false,
         class_libelle: student.class_libelle,
-        absenceId: student.absence_id,
+        class_id: student.id_class,
         absence_start_date: student.absence_start_date,
         absence_start_time: student.absence_start_time,
         absence_end_date: student.absence_end_date,
@@ -123,25 +171,21 @@ export default function AttendanceClient() {
       toast.error(result.error)
       setAbsentStudents([])
     }
-    
     setLoading(false)
   }
 
   useEffect(() => {
-    fetchTeacherClasses()
-    fetchAllAbsentStudents()
+    const loadInitialData = async () => {
+      await fetchInitialData()
+    }
+    loadInitialData()
   }, [])
 
   useEffect(() => {
-    if (selectedClass && viewMode === 'class') {
+    if (selectedClass && userRole === ROLES.TEACHER) {
       fetchAbsentStudentsByClass(selectedClass)
     }
-  }, [selectedClass, viewMode])
-
-  const handleClassSelect = (classId, classLibelle) => {
-    setSelectedClass(classId)
-    setSelectedClassLibelle(classLibelle)
-  }
+  }, [selectedClass, userRole])
 
   const handleShowBillet = (student, classLibelle) => {
     setSelectedStudent(student)
@@ -157,20 +201,16 @@ export default function AttendanceClient() {
   const handleMarkReturned = async (studentId, classId, absenceStartDate, absenceStartTime) => {
     const endDate = new Date().toISOString().split('T')[0]
     const endTime = new Date().toTimeString().slice(0, 5)
+    const startDate = absenceStartDate || endDate
+    const startTime = absenceStartTime || '08:00'
     
-    const result = await markStudentPresent(
-      studentId,
-      classId,
-      absenceStartDate,
-      absenceStartTime,
-      endDate,
-      endTime
-    )
+    const result = await markStudentPresent(studentId, classId, startDate, startTime, endDate, endTime)
     
     if (result.success) {
       toast.success('تم تسجيل عودة التلميذ بنجاح')
-      await fetchAllAbsentStudents()
-      if (viewMode === 'class' && selectedClass) {
+      if (userRole === ROLES.ADMIN || userRole === ROLES.MANAGER) {
+        await fetchAllAbsentStudents()
+      } else {
         await fetchAbsentStudentsByClass(selectedClass)
       }
     } else {
@@ -179,9 +219,8 @@ export default function AttendanceClient() {
   }
 
   const handleBilletConfirm = async (studentId, isJustified) => {
-    // Use the student's actual absence start date from the database
-    const absenceStartDate = selectedStudent.absence_start_date
-    const absenceStartTime = selectedStudent.absence_start_time
+    const absenceStartDate = selectedStudent.absence_start_date || new Date().toISOString().split('T')[0]
+    const absenceStartTime = selectedStudent.absence_start_time || '08:00'
     
     const notificationResult = await sendAbsenceNotification(
       studentId,
@@ -196,62 +235,40 @@ export default function AttendanceClient() {
       return
     }
     
-    toast.success(
-      isJustified 
-        ? `تم إرسال إشعار إلى الأستاذ (غياب مبرر) - ${notificationResult.teacherName || ''}`
-        : `تم إرسال إشعار إلى الأستاذ - ${notificationResult.teacherName || ''}`,
-      {
-        duration: 5000,
-        icon: <Bell size={18} />
-      }
+    toast.success(isJustified 
+      ? `تم إرسال إشعار إلى الأستاذ (غياب مبرر) - ${notificationResult.teacherName || ''}`
+      : `تم إرسال إشعار إلى الأستاذ - ${notificationResult.teacherName || ''}`
     )
     
     setShowBillet(false)
     setSelectedStudent(null)
     setSelectedStudentClass('')
-    
-    await fetchAllAbsentStudents()
-    if (viewMode === 'class' && selectedClass) {
-      await fetchAbsentStudentsByClass(selectedClass)
-    }
-  }
-
-  const handleMarkAllPresent = async () => {
-    if (viewMode === 'class') {
-      let notificationCount = 0
-      for (const student of absentStudents) {
-        const result = await sendAbsenceNotification(
-          student.id_eleve,
-          selectedClassLibelle,
-          student.absence_start_date,
-          student.absence_start_time,
-          false
-        )
-        if (result.success) {
-          notificationCount++
-        }
-      }
-      
-      if (notificationCount > 0) {
-        toast.success(`تم إرسال ${notificationCount} إشعارات إلى الأساتذة`)
-      }
-      setAbsentStudents([])
-    }
-    
-    await fetchAllAbsentStudents()
-    if (viewMode === 'class' && selectedClass) {
-      await fetchAbsentStudentsByClass(selectedClass)
-    }
   }
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    if (viewMode === 'class' && selectedClass) {
+    if (userRole === ROLES.TEACHER && selectedClass) {
       await fetchAbsentStudentsByClass(selectedClass)
     }
-    await fetchAllAbsentStudents()
+    if (userRole === ROLES.ADMIN || userRole === ROLES.MANAGER) {
+      await fetchAllAbsentStudents()
+    }
     setRefreshing(false)
     toast.success('تم تحديث البيانات')
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '—'
+    try {
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return dateString
+      const day = date.getDate()
+      const month = date.getMonth() + 1
+      const year = date.getFullYear()
+      return `${day}/${month}/${year}`
+    } catch {
+      return dateString
+    }
   }
 
   const getStatusBadge = (justified, isReturned) => {
@@ -278,6 +295,32 @@ export default function AttendanceClient() {
     )
   }
 
+  const isTeacher = userRole === ROLES.TEACHER
+  const isAdminOrManager = userRole === ROLES.ADMIN || userRole === ROLES.MANAGER
+
+  if (userRole === null) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">جاري التحقق من الصلاحيات...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isTeacher && !isAdminOrManager) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center bg-red-50 p-8 rounded-xl">
+          <AlertCircle size={48} className="text-red-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-red-800">غير مصرح به</h2>
+          <p className="text-red-600 mt-2">ليس لديك صلاحية للوصول إلى هذه الصفحة</p>
+        </div>
+      </div>
+    )
+  }
+
   if (loading && allAbsentStudents.count === 0 && teacherClasses.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -296,59 +339,62 @@ export default function AttendanceClient() {
           نظام إدارة الحضور والغياب
         </h1>
 
-        {/* View Mode Toggle */}
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-            <div className="flex gap-3">
+        {isAdminOrManager && (
+          <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setViewMode('all')
+                    setSelectedClass('')
+                    setSelectedClassLibelle('')
+                    fetchAllAbsentStudents()
+                  }}
+                  className={`px-6 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  type="button"
+                >
+                  <GraduationCap size={18} />
+                  جميع الغيابات
+                </button>
+                <button
+                  onClick={() => {
+                    setViewMode('class')
+                    fetchTeacherClassesData()
+                  }}
+                  className={`px-6 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    viewMode === 'class' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  type="button"
+                >
+                  <UserCheck size={18} />
+                  غيابات قسم محدد
+                </button>
+              </div>
               <button
-                onClick={() => {
-                  setViewMode('all')
-                  setSelectedClass('')
-                  setSelectedClassLibelle('')
-                  fetchAllAbsentStudents()
-                }}
-                className={`px-6 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                  viewMode === 'all' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
                 type="button"
               >
-                <GraduationCap size={18} />
-                جميع الغيابات
-              </button>
-              <button
-                onClick={() => {
-                  setViewMode('class')
-                  if (teacherClasses.length > 0 && !selectedClass) {
-                    handleClassSelect(teacherClasses[0].id_class, teacherClasses[0].libelle)
-                  }
-                }}
-                className={`px-6 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                  viewMode === 'class' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-                type="button"
-              >
-                <UserCheck size={18} />
-                غيابات قسم محدد
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                تحديث
               </button>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
-              type="button"
-            >
-              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-              تحديث
-            </button>
           </div>
-        </div>
+        )}
 
-        {/* Class Selection Dropdown */}
-        {viewMode === 'class' && (
+        {isTeacher && (
+          <div className="mb-4 text-center">
+            <div className="inline-block bg-blue-100 text-blue-800 px-4 py-2 rounded-lg">
+              <UserCheck size={18} className="inline ml-2" />
+              عرض غيابات أقسامي فقط
+            </div>
+          </div>
+        )}
+
+        {((isTeacher) || (isAdminOrManager && viewMode === 'class')) && (
           <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-6 sm:mb-8">
             <div className="flex flex-col sm:flex-row gap-4 items-end">
               <div className="flex-1">
@@ -374,14 +420,13 @@ export default function AttendanceClient() {
             </div>
             {teacherClasses.length === 0 && (
               <div className="text-center text-gray-500 py-4 mt-4">
-                لا توجد فصول مسندة إليك
+                {isTeacher ? 'لا توجد فصول مسندة إليك' : 'لا توجد فصول متاحة'}
               </div>
             )}
           </div>
         )}
 
-        {/* All School View */}
-        {viewMode === 'all' && (
+        {isAdminOrManager && viewMode === 'all' && (
           <div className="bg-white rounded-xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-r from-red-600 to-orange-600 p-4 sm:p-6">
               <div className="flex justify-between items-center flex-wrap gap-4">
@@ -427,32 +472,22 @@ export default function AttendanceClient() {
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الرقم</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">اسم التلميذ</th>
+                              <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">القسم</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ البدء</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">وقت البدء</th>
-                              <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ العودة</th>
-                              <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">وقت العودة</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
                               <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الإجراءات</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
                             {students.map((student, index) => (
-                              <tr key={student.student_id} className="hover:bg-red-50 transition-colors bg-red-50/30">
+                              <tr key={student.student_id} className={`transition-colors ${!student.is_returned ? 'bg-red-50/30 hover:bg-red-50' : 'bg-gray-50/30 hover:bg-gray-50'}`}>
                                 <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                                 <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{student.num || '—'}</td>
                                 <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.student_name}</td>
-                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {student.absence_start_date || '—'}
-                                </td>
-                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {student.absence_start_time || '—'}
-                                </td>
-                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {student.absence_end_date || '—'}
-                                </td>
-                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {student.absence_end_time || '—'}
-                                </td>
+                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.class_libelle}</td>
+                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(student.absence_start_date)}</td>
+                                <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.absence_start_time || '—'}</td>
                                 <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                                   {getStatusBadge(student.justified, student.is_returned)}
                                 </td>
@@ -465,29 +500,6 @@ export default function AttendanceClient() {
                                     >
                                       <Bell size={14} />
                                       إشعار
-                                    </button>
-                                    {!student.is_returned && (
-                                      <button
-                                        onClick={() => handleMarkReturned(
-                                          student.student_id,
-                                          student.class_id,
-                                          student.absence_start_date,
-                                          student.absence_start_time
-                                        )}
-                                        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1 text-sm"
-                                        type="button"
-                                      >
-                                        <ArrowLeftCircle size={14} />
-                                        تسجيل عودة
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => handleViewAbsenceDetails(student)}
-                                      className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-1 text-sm"
-                                      type="button"
-                                    >
-                                      <FileText size={14} />
-                                      تفاصيل
                                     </button>
                                   </div>
                                 </td>
@@ -504,14 +516,14 @@ export default function AttendanceClient() {
           </div>
         )}
 
-        {/* Class View */}
-        {viewMode === 'class' && selectedClass && (
+        {((isTeacher) || (isAdminOrManager && viewMode === 'class')) && selectedClass && (
           <div className="bg-white rounded-xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-r from-red-600 to-orange-600 p-4 sm:p-6">
               <div className="flex justify-between items-center flex-wrap gap-4">
                 <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                   <AlertCircle size={20} />
                   قائمة التلاميذ الغائبين - {selectedClassLibelle}
+                  {isTeacher && <span className="text-sm font-normal mr-2">(أقسامي فقط)</span>}
                 </h2>
               </div>
               <div className="mt-2">
@@ -520,19 +532,6 @@ export default function AttendanceClient() {
                 </span>
               </div>
             </div>
-
-            {absentStudents.length > 0 && (
-              <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50">
-                <button
-                  onClick={handleMarkAllPresent}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
-                  type="button"
-                >
-                  <Bell size={18} />
-                  إرسال إشعارات لجميع التلاميذ الغائبين
-                </button>
-              </div>
-            )}
 
             {loading ? (
               <div className="text-center py-12">
@@ -556,43 +555,23 @@ export default function AttendanceClient() {
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">اسم التلميذ</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ البدء</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">وقت البدء</th>
-                        <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ العودة</th>
-                        <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">وقت العودة</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الإجراءات</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {absentStudents.map((student, index) => (
-                        <tr key={student.id_eleve} className="hover:bg-red-50 transition-colors bg-red-50/30">
+                        <tr key={student.id_eleve} className={`transition-colors ${!student.is_returned ? 'bg-red-50/30 hover:bg-red-50' : 'bg-gray-50/30 hover:bg-gray-50'}`}>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{student.num || '—'}</td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.nom}</td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {student.absence_start_date || '—'}
-                          </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {student.absence_start_time || '—'}
-                          </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {student.absence_end_date || '—'}
-                          </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {student.absence_end_time || '—'}
-                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(student.absence_start_date)}</td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.absence_start_time || '—'}</td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             {getStatusBadge(student.justified, student.is_returned)}
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             <div className="flex gap-2 flex-wrap">
-                              <button
-                                onClick={() => handleShowBillet(student, selectedClassLibelle)}
-                                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center gap-1 text-sm"
-                                type="button"
-                              >
-                                <Bell size={14} />
-                                إشعار
-                              </button>
                               {!student.is_returned && (
                                 <button
                                   onClick={() => handleMarkReturned(
@@ -629,7 +608,6 @@ export default function AttendanceClient() {
         )}
       </div>
 
-      {/* Billet Modal */}
       {showBillet && selectedStudent && (
         <Billet
           student={selectedStudent}
@@ -643,7 +621,6 @@ export default function AttendanceClient() {
         />
       )}
 
-      {/* Absence Details Modal */}
       {showAbsenceDetails && selectedAbsence && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
@@ -677,7 +654,7 @@ export default function AttendanceClient() {
               <div className="grid grid-cols-2 gap-4 border-b pb-3">
                 <div>
                   <p className="text-sm text-gray-500">تاريخ بدء الغياب</p>
-                  <p className="text-lg">{selectedAbsence.absence_start_date || '—'}</p>
+                  <p className="text-lg">{formatDate(selectedAbsence.absence_start_date)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">وقت بدء الغياب</p>
@@ -688,7 +665,7 @@ export default function AttendanceClient() {
               <div className="grid grid-cols-2 gap-4 border-b pb-3">
                 <div>
                   <p className="text-sm text-gray-500">تاريخ العودة</p>
-                  <p className="text-lg">{selectedAbsence.absence_end_date || '—'}</p>
+                  <p className="text-lg">{formatDate(selectedAbsence.absence_end_date)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">وقت العودة</p>

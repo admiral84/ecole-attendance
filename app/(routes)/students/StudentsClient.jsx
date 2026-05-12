@@ -39,12 +39,16 @@ function formatDate(dateString) {
   }
 }
 
-export default function StudentsClient({ students, classes }) {
+export default function StudentsClient({ students, classes, userRole }) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedClass, setSelectedClass] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [studentsList, setStudentsList] = useState(students)
+
+  // Determine permissions based on role
+  const canModify = userRole === 'admin' || userRole === 'manager'
+  const roleLabel = userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'
 
   // Handle adding a new student
   const handleStudentAdded = (newStudent) => {
@@ -52,14 +56,14 @@ export default function StudentsClient({ students, classes }) {
     toast.success('تم إضافة التلميذ بنجاح')
   }
 
-  // Filter students - FIXED: Convert both values to strings for comparison
+  // Filter students
   const filteredStudents = studentsList.filter(student => {
     const matchesSearch = searchTerm === '' || 
       student.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.prenom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.id_eleve?.includes(searchTerm) ||
       student.num_eleve?.includes(searchTerm)
     
-    // Fix: Convert both sides to string for proper comparison
     const matchesClass = selectedClass === '' || 
       String(student.id_class) === String(selectedClass)
     
@@ -67,19 +71,24 @@ export default function StudentsClient({ students, classes }) {
   })
 
   const handleDelete = async (id) => {
+    if (!canModify) {
+      toast.error('غير مصرح به - فقط المديرين يمكنهم حذف التلاميذ')
+      return
+    }
+    
     if (confirm('هل أنت متأكد من حذف هذا التلميذ؟')) {
       try {
-        const response = await fetch(`/api/students/${id}`, {
-          method: 'DELETE',
-        })
+        // Use server action instead of API
+        const { deleteStudent } = await import('../../actions/students')
+        const result = await deleteStudent(id)
         
-        if (response.ok) {
+        if (result.success) {
           setStudentsList(studentsList.filter(student => 
             (student.id_eleve || student.id) !== id
           ))
           toast.success('تم حذف التلميذ بنجاح')
         } else {
-          toast.error('حدث خطأ في حذف التلميذ')
+          toast.error(result.error || 'حدث خطأ في حذف التلميذ')
         }
       } catch (error) {
         console.error('Delete error:', error)
@@ -97,15 +106,34 @@ export default function StudentsClient({ students, classes }) {
             إدارة التلاميذ
           </h1>
           <p className="text-gray-600 mt-1">عرض وإدارة بيانات التلاميذ</p>
+          {/* Role badge */}
+          <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${
+            userRole === 'admin' ? 'bg-red-100 text-red-700' :
+            userRole === 'manager' ? 'bg-yellow-100 text-yellow-700' :
+            'bg-blue-100 text-blue-700'
+          }`}>
+            {roleLabel}
+          </span>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-        >
-          <Plus size={20} />
-          إضافة تلميذ
-        </button>
+        
+        {/* Only show Add button for admin/manager */}
+        {canModify && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+          >
+            <Plus size={20} />
+            إضافة تلميذ
+          </button>
+        )}
       </div>
+
+      {/* Info message for teachers */}
+      {userRole === 'teacher' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 text-center text-blue-700 text-sm">
+          📖 أنت في وضع المشاهدة. يمكنك فقط عرض تلاميذ أقسامك.
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
@@ -160,7 +188,12 @@ export default function StudentsClient({ students, classes }) {
           <div className="text-center py-12">
             <div className="text-6xl mb-4">📚</div>
             <p className="text-gray-500 text-lg">لا توجد تلاميذ مسجلين</p>
-            <p className="text-gray-400 text-sm mt-2">قم بإضافة تلميذ جديد للبدء</p>
+            {canModify && (
+              <p className="text-gray-400 text-sm mt-2">قم بإضافة تلميذ جديد للبدء</p>
+            )}
+            {userRole === 'teacher' && (
+              <p className="text-gray-400 text-sm mt-2">لا يوجد تلاميذ في أقسامك حالياً</p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -202,6 +235,7 @@ export default function StudentsClient({ students, classes }) {
                     <td className="py-3 px-4 text-sm">{student.pere || '-'}</td>
                     <td className="py-3 px-4">
                       <div className="flex gap-2">
+                        {/* View - everyone can see */}
                         <Link
                           href={`/students/${student.id_eleve || student.id}`}
                           className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition"
@@ -209,20 +243,26 @@ export default function StudentsClient({ students, classes }) {
                         >
                           <Eye size={16} />
                         </Link>
-                        <Link
-                          href={`/students/edit/${student.id_eleve || student.id}`}
-                          className="p-1.5 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition"
-                          title="تعديل"
-                        >
-                          <Edit size={16} />
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(student.id_eleve || student.id)}
-                          className="p-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition"
-                          title="حذف"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        
+                        {/* Edit & Delete - only admin/manager */}
+                        {canModify && (
+                          <>
+                            <Link
+                              href={`/students/edit/${student.id_eleve || student.id}`}
+                              className="p-1.5 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition"
+                              title="تعديل"
+                            >
+                              <Edit size={16} />
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(student.id_eleve || student.id)}
+                              className="p-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition"
+                              title="حذف"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -233,13 +273,15 @@ export default function StudentsClient({ students, classes }) {
         )}
       </div>
 
-      {/* Add Student Modal */}
-      <AddStudentModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        classes={classes}
-        onStudentAdded={handleStudentAdded}
-      />
+      {/* Add Student Modal - only show if canModify */}
+      {canModify && (
+        <AddStudentModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          classes={classes}
+          onStudentAdded={handleStudentAdded}
+        />
+      )}
     </div>
   )
 }

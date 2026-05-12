@@ -2,43 +2,32 @@
 import { createClient } from '../../../lib/supabase/server'
 import { redirect } from 'next/navigation'
 import StudentsClient from './StudentsClient'
-import { getClasses } from '../../actions/students'
+import { getClasses, getStudents } from '../../actions/students'
+import { getCurrentUser } from '../../actions/users'  // ✅ Reuse existing!
 
 export const dynamic = 'force-dynamic'
 
 export default async function StudentsPage() {
-  const supabase = await createClient()
+  // ✅ Use your existing getCurrentUser from users.js
+  const { user, error } = await getCurrentUser()
   
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
+  if (error || !user) {
     redirect('/login?redirect=/students')
   }
   
-  // Fetch students with their class information
-  const { data: students, error: studentsError } = await supabase
-    .from('eleve')
-    .select(`
-      *,
-      classInfo:classes!eleve_id_class_fkey(
-        id_class,
-        libelle
-      )
-    `)
-    .order('nom', { ascending: true })
+  const userRole = user?.role || 'teacher'
   
-  if (studentsError) {
-    console.error('Error fetching students:', studentsError)
-    return (
-      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-        <p>خطأ في تحميل البيانات: {studentsError.message}</p>
-      </div>
-    )
-  }
+  // Fetch students using server action (already has permission checks)
+  const students = await getStudents()
   
-  // Fetch classes for the dropdown
+  // Fetch classes using server action (already has permission checks)
   const classes = await getClasses()
   
-  return <StudentsClient students={students || []} classes={classes} />
+  return (
+    <StudentsClient 
+      students={students || []} 
+      classes={classes || []}
+      userRole={userRole}
+    />
+  )
 }

@@ -1,4 +1,4 @@
-// app/classes/ClassesListClient.jsx
+// app/classes/ClassClient.jsx
 'use client'
 
 import { useState } from 'react'
@@ -8,7 +8,7 @@ import { Search, Plus, X, Save, Trash2, Edit } from 'lucide-react'
 import { createClass, updateClass, deleteClass } from '../../actions/classes'
 import { toast } from 'sonner'
 
-export default function ClassClient({ initialClasses }) {
+export default function ClassClient({ initialClasses, userRole }) {
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [classes, setClasses] = useState(initialClasses)
@@ -24,6 +24,10 @@ export default function ClassClient({ initialClasses }) {
   })
   const [errors, setErrors] = useState({})
 
+  // Determine permissions based on role
+  const canModify = userRole === 'admin' || userRole === 'manager'
+  const canDelete = userRole === 'admin'  // Only admin can delete
+
   const filteredClasses = classes.filter(cls =>
     cls.libelle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cls.id_class?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -32,7 +36,6 @@ export default function ClassClient({ initialClasses }) {
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    // Clear error when user types
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
     }
@@ -41,7 +44,6 @@ export default function ClassClient({ initialClasses }) {
   const handleAddSubmit = async (e) => {
     e.preventDefault()
     
-    // Validate
     const newErrors = {}
     if (!formData.id_class.trim()) {
       newErrors.id_class = 'معرف القسم مطلوب'
@@ -50,13 +52,11 @@ export default function ClassClient({ initialClasses }) {
       newErrors.libelle = 'اسم القسم مطلوب'
     }
     
-    // Check if ID already exists
     const existingClassById = classes.find(cls => cls.id_class === formData.id_class.trim())
     if (existingClassById) {
       newErrors.id_class = 'هذا المعرف موجود بالفعل'
     }
     
-    // Check if name already exists
     const existingClassByName = classes.find(cls => cls.libelle === formData.libelle.trim())
     if (existingClassByName) {
       newErrors.libelle = 'هذا الاسم موجود بالفعل'
@@ -73,11 +73,9 @@ export default function ClassClient({ initialClasses }) {
       const result = await createClass(formData)
       
       if (result.success) {
-        // Add the new class to the list
         setClasses(prev => [result.data, ...prev])
         toast.success(result.message || 'تم إضافة القسم بنجاح')
         closeAddModal()
-        router.refresh()
       } else {
         toast.error(result.error || 'حدث خطأ أثناء إضافة القسم')
       }
@@ -92,13 +90,11 @@ export default function ClassClient({ initialClasses }) {
   const handleEditSubmit = async (e) => {
     e.preventDefault()
     
-    // Validate
     const newErrors = {}
     if (!formData.libelle.trim()) {
       newErrors.libelle = 'اسم القسم مطلوب'
     }
     
-    // Check if name already exists (excluding current class)
     const existingClassByName = classes.find(cls => 
       cls.libelle === formData.libelle.trim() && cls.id_class !== selectedClass?.id_class
     )
@@ -117,7 +113,6 @@ export default function ClassClient({ initialClasses }) {
       const result = await updateClass(selectedClass.id_class, { libelle: formData.libelle })
       
       if (result.success) {
-        // Update the class in the list
         setClasses(prev => prev.map(cls => 
           cls.id_class === selectedClass.id_class 
             ? { ...cls, libelle: formData.libelle }
@@ -125,7 +120,6 @@ export default function ClassClient({ initialClasses }) {
         ))
         toast.success(result.message || 'تم تحديث القسم بنجاح')
         closeEditModal()
-        router.refresh()
       } else {
         toast.error(result.error || 'حدث خطأ أثناء تحديث القسم')
       }
@@ -146,11 +140,9 @@ export default function ClassClient({ initialClasses }) {
       const result = await deleteClass(selectedClass.id_class)
       
       if (result.success) {
-        // Remove the deleted class from the list
         setClasses(prev => prev.filter(cls => cls.id_class !== selectedClass.id_class))
         toast.success(result.message || 'تم حذف القسم بنجاح')
         closeDeleteModal()
-        router.refresh()
       } else {
         toast.error(result.error || 'حدث خطأ أثناء حذف القسم')
       }
@@ -210,15 +202,32 @@ export default function ClassClient({ initialClasses }) {
             إدارة الأقسام
           </h1>
           <p className="text-gray-600 mt-1">عرض وإدارة جميع الأقسام</p>
+          {/* Show role badge */}
+          <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${
+            userRole === 'admin' ? 'bg-red-100 text-red-700' :
+            userRole === 'manager' ? 'bg-yellow-100 text-yellow-700' :
+            'bg-blue-100 text-blue-700'
+          }`}>
+            {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'}
+          </span>
         </div>
-        <button
-          onClick={openAddModal}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-        >
-          <Plus size={20} />
-          إضافة قسم
-        </button>
+        {canModify && (
+          <button
+            onClick={openAddModal}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+          >
+            <Plus size={20} />
+            إضافة قسم
+          </button>
+        )}
       </div>
+
+      {/* Info message for teachers */}
+      {userRole === 'teacher' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 text-center text-blue-700 text-sm">
+          📖 أنت في وضع المشاهدة. يمكنك فقط عرض الأقسام التي تدرسها.
+        </div>
+      )}
 
       {/* Search */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
@@ -239,7 +248,12 @@ export default function ClassClient({ initialClasses }) {
         <div className="bg-white rounded-xl shadow-sm text-center py-12">
           <div className="text-6xl mb-4">📚</div>
           <p className="text-gray-500 text-lg">لا توجد أقسام مسجلة</p>
-          <p className="text-gray-400 text-sm mt-2">قم بإضافة قسم جديد للبدء</p>
+          {canModify && (
+            <p className="text-gray-400 text-sm mt-2">قم بإضافة قسم جديد للبدء</p>
+          )}
+          {userRole === 'teacher' && (
+            <p className="text-gray-400 text-sm mt-2">أنت غير مسؤول عن أي قسم حالياً</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -248,25 +262,28 @@ export default function ClassClient({ initialClasses }) {
               key={cls.id_class}
               className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6 block group relative"
             >
-              {/* Action Buttons - Always visible */}
+              {/* Action buttons - only show based on permissions */}
               <div className="absolute top-4 left-4 flex gap-2">
-                <button
-                  onClick={() => openEditModal(cls)}
-                  className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-sm"
-                  title="تعديل القسم"
-                >
-                  <Edit size={16} />
-                </button>
-                <button
-                  onClick={() => openDeleteModal(cls)}
-                  className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-sm"
-                  title="حذف القسم"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {canModify && (
+                  <button
+                    onClick={() => openEditModal(cls)}
+                    className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-sm"
+                    title="تعديل القسم"
+                  >
+                    <Edit size={16} />
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => openDeleteModal(cls)}
+                    className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-sm"
+                    title="حذف القسم"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
               
-              {/* Class Content Link */}
               <Link href={`/classes/${cls.id_class}`} className="block">
                 <div className="flex justify-between items-start mb-3">
                   <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition">
@@ -294,7 +311,7 @@ export default function ClassClient({ initialClasses }) {
       )}
 
       {/* Add Class Modal */}
-      {isAddModalOpen && (
+      {isAddModalOpen && canModify && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -316,12 +333,11 @@ export default function ClassClient({ initialClasses }) {
               <form onSubmit={handleAddSubmit}>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label htmlFor="id_class" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       معرف القسم <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      id="id_class"
                       name="id_class"
                       value={formData.id_class}
                       onChange={handleChange}
@@ -335,18 +351,14 @@ export default function ClassClient({ initialClasses }) {
                     {errors.id_class && (
                       <p className="mt-1 text-sm text-red-600">{errors.id_class}</p>
                     )}
-                    <p className="mt-2 text-sm text-gray-500">
-                      معرف فريد للقسم (أحرف وأرقام فقط)
-                    </p>
                   </div>
 
                   <div>
-                    <label htmlFor="libelle" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       اسم القسم <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      id="libelle"
                       name="libelle"
                       value={formData.libelle}
                       onChange={handleChange}
@@ -359,9 +371,6 @@ export default function ClassClient({ initialClasses }) {
                     {errors.libelle && (
                       <p className="mt-1 text-sm text-red-600">{errors.libelle}</p>
                     )}
-                    <p className="mt-2 text-sm text-gray-500">
-                      اسم القسم (يجب أن يكون فريداً)
-                    </p>
                   </div>
                 </div>
                 
@@ -376,16 +385,9 @@ export default function ClassClient({ initialClasses }) {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isLoading ? (
-                      'جاري الإضافة...'
-                    ) : (
-                      <>
-                        <Save size={18} />
-                        إضافة القسم
-                      </>
-                    )}
+                    {isLoading ? 'جاري الإضافة...' : 'إضافة القسم'}
                   </button>
                 </div>
               </form>
@@ -395,7 +397,7 @@ export default function ClassClient({ initialClasses }) {
       )}
 
       {/* Edit Class Modal */}
-      {isEditModalOpen && selectedClass && (
+      {isEditModalOpen && selectedClass && canModify && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -427,20 +429,17 @@ export default function ClassClient({ initialClasses }) {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
                       dir="ltr"
                     />
-                    <p className="mt-1 text-sm text-gray-500">المعرف لا يمكن تغييره</p>
                   </div>
 
                   <div>
-                    <label htmlFor="edit_libelle" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       اسم القسم <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      id="edit_libelle"
                       name="libelle"
                       value={formData.libelle}
                       onChange={handleChange}
-                      placeholder="مثال: السنة الأولى, السنة الثانية, قسم A"
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                         errors.libelle ? 'border-red-500' : 'border-gray-300'
                       }`}
@@ -450,9 +449,6 @@ export default function ClassClient({ initialClasses }) {
                     {errors.libelle && (
                       <p className="mt-1 text-sm text-red-600">{errors.libelle}</p>
                     )}
-                    <p className="mt-2 text-sm text-gray-500">
-                      اسم القسم (يجب أن يكون فريداً)
-                    </p>
                   </div>
                 </div>
                 
@@ -467,16 +463,9 @@ export default function ClassClient({ initialClasses }) {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isLoading ? (
-                      'جاري التحديث...'
-                    ) : (
-                      <>
-                        <Save size={18} />
-                        تحديث القسم
-                      </>
-                    )}
+                    {isLoading ? 'جاري التحديث...' : 'تحديث القسم'}
                   </button>
                 </div>
               </form>
@@ -485,8 +474,8 @@ export default function ClassClient({ initialClasses }) {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && selectedClass && (
+      {/* Delete Confirmation Modal - Only for admin */}
+      {isDeleteModalOpen && selectedClass && canDelete && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -518,9 +507,9 @@ export default function ClassClient({ initialClasses }) {
                     <p className="text-gray-700 mt-1">
                       <span className="font-medium">المعرف:</span> {selectedClass.id_class}
                     </p>
-                    {selectedClass.student_count > 0 && (
+                    {(selectedClass.student_count || 0) > 0 && (
                       <p className="text-red-600 mt-2 text-sm">
-                        ⚠️ يحتوي هذا القسم على {selectedClass.student_count} تلميذ. لا يمكن حذفه إلا بعد نقل التلاميذ إلى قسم آخر.
+                        ⚠️ يحتوي هذا القسم على {selectedClass.student_count} تلميذ
                       </p>
                     )}
                   </div>
@@ -541,17 +530,10 @@ export default function ClassClient({ initialClasses }) {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  disabled={isDeleting || selectedClass.student_count > 0}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  disabled={isDeleting || (selectedClass.student_count || 0) > 0}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isDeleting ? (
-                    'جاري الحذف...'
-                  ) : (
-                    <>
-                      <Trash2 size={18} />
-                      حذف القسم
-                    </>
-                  )}
+                  {isDeleting ? 'جاري الحذف...' : 'حذف القسم'}
                 </button>
               </div>
             </div>

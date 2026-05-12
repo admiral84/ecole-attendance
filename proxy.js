@@ -1,8 +1,7 @@
-// proxy.js (في جذر المشروع - تأكد من وجود هذا الملف)
+// proxy.js (root directory)
 import { updateSession } from "./lib/supabase/proxy";
 
-export default async function proxy(request) {
-
+export async function proxy(request) {
   return await updateSession(request);
 }
 

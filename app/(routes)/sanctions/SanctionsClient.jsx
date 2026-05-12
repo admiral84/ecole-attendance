@@ -1,4 +1,3 @@
-// app/sanctions/SanctionsClient.jsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -13,31 +12,36 @@ import {
   Eye, 
   Trash2,
   Calendar,
-  User,
   BookOpen,
   FileText,
-  Download,
   TrendingUp
 } from 'lucide-react'
 import { deleteSanction } from '../../actions/sanctions'
 
-export default function SanctionsClient({ initialSanctions, stats, classes, filters: initialFilters }) {
+export default function SanctionsClient({ initialSanctions, stats, classes }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   
   const [sanctions, setSanctions] = useState(initialSanctions)
   const [loading, setLoading] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Initialize filters from URL params
   const [filters, setFilters] = useState({
-    studentId: initialFilters.studentId || '',
-    classId: initialFilters.classId || '',
-    startDate: initialFilters.startDate || '',
-    endDate: initialFilters.endDate || ''
+    studentId: searchParams.get('student') || '',
+    classId: searchParams.get('class') || '',
+    startDate: searchParams.get('startDate') || '',
+    endDate: searchParams.get('endDate') || ''
   })
+  
   const [selectedSanction, setSelectedSanction] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
 
-  // Format date as DD-MM-YYYY (e.g., 24-03-1958)
+  // Update local sanctions when props change
+  useEffect(() => {
+    setSanctions(initialSanctions)
+  }, [initialSanctions])
+
   const formatDate = (date) => {
     if (!date) return '-'
     
@@ -55,16 +59,10 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
     }
   }
 
-  // Format date for input fields (YYYY-MM-DD)
-  const formatDateForInput = (date) => {
-    if (!date) return ''
-    return date.split('T')[0]
-  }
-
   const applyFilters = () => {
     const params = new URLSearchParams()
     if (filters.studentId) params.set('student', filters.studentId)
-    if (filters.classId) params.set('class', filters.classId)
+    if (filters.classId && filters.classId !== 'all') params.set('class', filters.classId)
     if (filters.startDate) params.set('startDate', filters.startDate)
     if (filters.endDate) params.set('endDate', filters.endDate)
     
@@ -158,7 +156,7 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
             <div>
               <p className="text-gray-500 text-sm">متوسط شهري</p>
               <p className="text-2xl font-bold text-gray-900">
-                {Math.round(stats.total / 6) || 0}
+                {Math.round(stats.total / Math.max(Object.keys(stats.monthly).length, 1)) || 0}
               </p>
             </div>
             <div className="bg-purple-100 p-3 rounded-full">
@@ -190,7 +188,7 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
                   type="text"
                   value={filters.studentId}
                   onChange={(e) => setFilters({ ...filters, studentId: e.target.value })}
-                  placeholder="معرف التلميذ أو الاسم"
+                  placeholder="اسم التلميذ"
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
                 />
               </div>
@@ -278,7 +276,7 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
               <tbody>
                 {sanctions.map((sanction, index) => (
                   <tr key={sanction.id} className="border-b hover:bg-gray-50 transition">
-                    <td className="py-3 px-4 text-sm text-gray-500">{index + 1}</td>
+                    <td className="py-3 px-4 text-sm text-gray-500 text-center">{index + 1}</td>
                     <td className="py-3 px-4">
                       <Link 
                         href={`/students/${sanction.studentId}`}
@@ -298,11 +296,11 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
                         {sanction.motif}
                       </p>
                     </td>
-                    <td className="py-3 px-4 text-sm">{formatDate(sanction.startDate)}</td>
-                    <td className="py-3 px-4 text-sm">
+                    <td className="py-3 px-4 text-sm text-center">{formatDate(sanction.startDate)}</td>
+                    <td className="py-3 px-4 text-sm text-center">
                       {sanction.endDate ? formatDate(sanction.endDate) : '-'}
                     </td>
-                    <td className="py-3 px-4 text-sm">{formatDate(sanction.createdAt)}</td>
+                    <td className="py-3 px-4 text-sm text-center">{formatDate(sanction.createdAt)}</td>
                     <td className="py-3 px-4">
                       <div className="flex gap-2">
                         <button
@@ -373,10 +371,6 @@ export default function SanctionsClient({ initialSanctions, stats, classes, filt
                 <div>
                   <label className="text-sm text-gray-500">تاريخ الإضافة</label>
                   <p className="font-medium">{formatDate(selectedSanction.createdAt)}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-500">أضيف بواسطة</label>
-                  <p className="font-medium">{selectedSanction.createdByName || '-'}</p>
                 </div>
               </div>
               

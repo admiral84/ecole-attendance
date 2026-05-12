@@ -10,6 +10,7 @@ export default function CompleteProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [user, setUser] = useState(null)
+  const [userId, setUserId] = useState(null)
   const [classes, setClasses] = useState([])
   const [matieres, setMatieres] = useState([])
   const [seances, setSeances] = useState([])
@@ -25,7 +26,6 @@ export default function CompleteProfilePage() {
     id_classe: ''
   })
 
-  // Days in Arabic with their French equivalents for DB storage
   const days = [
     { arabic: 'الإثنين', french: 'lundi' },
     { arabic: 'الثلاثاء', french: 'mardi' },
@@ -35,22 +35,17 @@ export default function CompleteProfilePage() {
     { arabic: 'السبت', french: 'samedi' }
   ]
 
-  // Time slots from 8:00 to 18:00
   const timeSlots = [
     '8:00', '9:00', '10:00', '11:00', '12:00', 
     '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'
   ]
 
-  // Time options for beginning (8 to 17)
   const startTimes = Array.from({ length: 10 }, (_, i) => i + 8)
-  
-  // Time options for end (9 to 18)
   const endTimes = Array.from({ length: 10 }, (_, i) => i + 9)
 
   useEffect(() => {
     checkUserAndLoadData()
     
-    // Check screen size for responsive view
     const handleResize = () => {
       const width = window.innerWidth
       setMobileView(width < 768)
@@ -76,7 +71,7 @@ export default function CompleteProfilePage() {
 
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('matricule, nom, prenom, role, code_matiere')
+        .select('user_id, matricule, nom, prenom, role, code_matiere')
         .eq('email', session.user.email)
         .single()
 
@@ -92,11 +87,13 @@ export default function CompleteProfilePage() {
         return
       }
 
-      // Set the teacher's subject if they already have one
+      setUserId(userData.user_id)
+
       if (userData.code_matiere) {
         setSelectedMatiere(userData.code_matiere)
       }
 
+      // Load existing seances using user_id
       const { data: existingSeances, error: seancesError } = await supabase
         .from('seance')
         .select(`
@@ -105,9 +102,11 @@ export default function CompleteProfilePage() {
             libelle
           )
         `)
-        .eq('matricule', userData.matricule)
+        .eq('user_id', userData.user_id)
 
-      if (!seancesError && existingSeances) {
+      if (seancesError) {
+        console.error('Error loading seances:', seancesError)
+      } else if (existingSeances) {
         setSeances(existingSeances)
       }
 
@@ -123,7 +122,6 @@ export default function CompleteProfilePage() {
         setClasses(classesData || [])
       }
 
-      // Load subjects
       const { data: matieresData, error: matieresError } = await supabase
         .from('matiere')
         .select('code_matiere, libelle')
@@ -149,21 +147,10 @@ export default function CompleteProfilePage() {
     }
 
     try {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('matricule')
-        .eq('email', user.email)
-        .single()
-
-      if (!userData) {
-        toast.error('لم يتم العثور على بيانات المستخدم')
-        return false
-      }
-
       const { error: updateError } = await supabase
         .from('users')
         .update({ code_matiere: selectedMatiere })
-        .eq('matricule', userData.matricule)
+        .eq('user_id', userId)
 
       if (updateError) {
         console.error('Error saving subject:', updateError)
@@ -238,9 +225,7 @@ export default function CompleteProfilePage() {
       return false
     }
 
-    // Check for overlaps, excluding the current seance being edited
     const hasOverlap = seances.some(seance => {
-      // Skip the seance being edited
       if (selectedCell && seance.id === selectedCell.id) return false
       
       if (seance.jour !== currentSeance.jour) return false
@@ -263,7 +248,6 @@ export default function CompleteProfilePage() {
     if (!validateSeance()) return
 
     if (selectedCell) {
-      // Update existing seance
       const updatedSeances = seances.map(seance => {
         if (seance.id === selectedCell.id) {
           return {
@@ -283,14 +267,13 @@ export default function CompleteProfilePage() {
       setSeances(updatedSeances)
       toast.success('تم تحديث الحصة')
     } else {
-      // Add new seance
       const newSeance = {
         id: Date.now(),
         jour: currentSeance.jour,
         debut_heure: `${currentSeance.debut_heure}:00:00`,
         fin_heure: `${currentSeance.fin_heure}:00:00`,
         id_classe: currentSeance.id_classe,
-        matricule: user?.matricule,
+        user_id: userId,
         code_matiere: selectedMatiere,
         classes: {
           libelle: classes.find(c => c.id_class === currentSeance.id_classe)?.libelle
@@ -301,7 +284,6 @@ export default function CompleteProfilePage() {
       toast.success('تم إضافة الحصة')
     }
     
-    // Reset form
     setSelectedCell(null)
     setCurrentSeance({
       jour: 'lundi',
@@ -325,7 +307,6 @@ export default function CompleteProfilePage() {
     })
     setSelectedCell(seance)
     
-    // On mobile, scroll to form
     if (mobileView) {
       document.getElementById('seance-form')?.scrollIntoView({ behavior: 'smooth' })
     }
@@ -342,64 +323,60 @@ export default function CompleteProfilePage() {
       return
     }
 
+    if (!userId) {
+      toast.error('خطأ في بيانات المستخدم')
+      return
+    }
+
     setLoading(true)
 
     try {
-      // First save the teacher's subject
       const subjectSaved = await saveTeacherSubject()
       if (!subjectSaved) {
         setLoading(false)
         return
       }
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('matricule')
-        .eq('email', user.email)
-        .single()
-
-      if (!userData) {
-        toast.error('لم يتم العثور على بيانات المستخدم')
-        setLoading(false)
-        return
-      }
-
-      // Delete existing seances
+      // Delete existing seances using user_id
       const { error: deleteError } = await supabase
         .from('seance')
         .delete()
-        .eq('matricule', userData.matricule)
+        .eq('user_id', userId)
 
       if (deleteError) {
         console.error('Error deleting existing seances:', deleteError)
-        toast.error('حدث خطأ في تحديث الجدول')
+        toast.error(`حدث خطأ في تحديث الجدول: ${deleteError.message}`)
         setLoading(false)
         return
       }
 
-      // Prepare seances for insertion (remove temporary id and classes object)
+      // Prepare seances for insertion
       const seancesToInsert = seances.map(({ id, classes, ...seance }) => ({
-        ...seance,
-        matricule: userData.matricule,
+        jour: seance.jour,
+        debut_heure: seance.debut_heure,
+        fin_heure: seance.fin_heure,
+        id_classe: seance.id_classe,
+        user_id: userId,
         code_matiere: selectedMatiere
       }))
 
-      // Insert new seances
-      const { error: insertError } = await supabase
-        .from('seance')
-        .insert(seancesToInsert)
+      if (seancesToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('seance')
+          .insert(seancesToInsert)
 
-      if (insertError) {
-        console.error('Error saving seances:', insertError)
-        toast.error('حدث خطأ في حفظ الجدول')
-        setLoading(false)
-        return
+        if (insertError) {
+          console.error('Error saving seances:', insertError)
+          toast.error(`حدث خطأ في حفظ الجدول: ${insertError.message}`)
+          setLoading(false)
+          return
+        }
       }
 
       toast.success('تم حفظ الجدول بنجاح!')
       
       setTimeout(() => {
-        router.push('/dashboard')
+        router.push('/')
       }, 2000)
 
     } catch (error) {
@@ -416,7 +393,6 @@ export default function CompleteProfilePage() {
     
     return (
       <div className="space-y-4">
-        {/* Day Selector - Horizontal Scroll */}
         <div className="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
           {days.map(day => (
             <button
@@ -433,7 +409,6 @@ export default function CompleteProfilePage() {
           ))}
         </div>
 
-        {/* Time Slots for Selected Day */}
         <div className="space-y-2">
           {timeSlots.map((timeSlot, index) => {
             const seance = getSeanceForTimeSlot(selectedDayForMobile, timeSlot)
@@ -524,7 +499,6 @@ export default function CompleteProfilePage() {
     
     return (
       <div className="space-y-4">
-        {/* Day Selector Grid */}
         <div className="grid grid-cols-3 gap-2">
           {days.map(day => (
             <button
@@ -541,7 +515,6 @@ export default function CompleteProfilePage() {
           ))}
         </div>
 
-        {/* Schedule Grid for Selected Day */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="grid grid-cols-2 gap-0 divide-x divide-gray-200">
             <div className="bg-gray-50 p-3 text-center font-semibold text-gray-700 text-sm">
@@ -621,7 +594,6 @@ export default function CompleteProfilePage() {
         <h2 className="text-lg sm:text-xl font-bold mb-4 text-purple-800">اختر المادة التي تدرسها</h2>
         <p className="text-sm text-gray-600 mb-4">سيتم تطبيق هذه المادة على جميع حصصك في الجدول</p>
         
-        {/* Search Input for mobile/tablet */}
         <div className="mb-4">
           <input
             type="text"
@@ -637,7 +609,9 @@ export default function CompleteProfilePage() {
             <button
               key={matiere.code_matiere}
               onClick={() => setSelectedMatiere(matiere.code_matiere)}
-              className="px-3 sm:px-4 py-2 bg-white hover:bg-purple-100 border border-purple-300 rounded-lg transition-all duration-200 text-right text-sm sm:text-base hover:shadow-md"
+              className={`px-3 sm:px-4 py-2 bg-white hover:bg-purple-100 border border-purple-300 rounded-lg transition-all duration-200 text-right text-sm sm:text-base hover:shadow-md ${
+                selectedMatiere === matiere.code_matiere ? 'bg-purple-100 border-purple-500 ring-2 ring-purple-300' : ''
+              }`}
             >
               {matiere.libelle}
             </button>
@@ -646,7 +620,7 @@ export default function CompleteProfilePage() {
         
         {filteredMatieres.length === 0 && (
           <div className="text-center py-4 text-gray-500 text-sm">
-            لا توجد مواد匹配 بحثك
+            لا توجد مواد تطابق بحثك
           </div>
         )}
       </div>
