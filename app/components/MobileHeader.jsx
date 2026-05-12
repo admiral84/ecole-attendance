@@ -5,16 +5,17 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { toast } from 'sonner'
+import { getCurrentUser } from '../actions/users'
 
 const menuItems = [
-  { name: 'لوحة التحكم', href: '/', icon: '🏠' },
-  { name: 'الملف الشخصي', href: '/profile', icon: '👤' },
-  { name: 'تسجيل الغيابات', href: '/attendance', icon: '📝' },
-  { name: 'التلاميذ', href: '/students', icon: '👨‍🎓' },
-  { name: 'الأقسام', href: '/classes', icon: '📚' },
-  { name: 'العقوبات', href: '/sanctions', icon: '⚠️' },
-  { name: 'التقارير', href: '/reports', icon: '📊' },
-  { name: 'رفع قائمات التلاميذ', href: '/upload', icon: '📤' }
+  { name: 'لوحة التحكم', href: '/', icon: '🏠', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'الملف الشخصي', href: '/profile', icon: '👤', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'تسجيل الغيابات', href: '/attendance', icon: '📝', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'التلاميذ', href: '/students', icon: '👨‍🎓', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'الأقسام', href: '/classes', icon: '📚', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'العقوبات', href: '/sanctions', icon: '⚠️', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'التقارير', href: '/reports', icon: '📊', allowedRoles: ['admin', 'manager'] },
+  { name: 'رفع قائمات التلاميذ', href: '/upload', icon: '📤', allowedRoles: ['admin', 'manager'] }
 ]
 
 export default function MobileHeader() {
@@ -24,60 +25,26 @@ export default function MobileHeader() {
   const [userData, setUserData] = useState(null)
 
   useEffect(() => {
-    const getUser = async () => {
+    const fetchUser = async () => {
       try {
-        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+        const { user, authUser, error } = await getCurrentUser()
         
-        if (authError || !authUser) {
+        if (error || !user) {
           return
         }
 
-        setUser(authUser)
-
-        const matricule = authUser.user_metadata?.matricule
-        let userInfo = null
-
-        if (matricule) {
-          const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('matricule', matricule)
-            .single()
-          
-          if (!error && data) {
-            userInfo = data
-          }
-        }
-
-        if (userInfo) {
-          setUserData({
-            nom: userInfo.nom,
-            prenom: userInfo.prenom,
-            role: userInfo.role,
-            email: authUser.email,
-            matricule: userInfo.matricule,
-            phone: userInfo.phone
-          })
-        } else {
-          setUserData({
-            nom: authUser.user_metadata?.nom || 'مستخدم',
-            prenom: authUser.user_metadata?.prenom || '',
-            role: authUser.user_metadata?.role || 'teacher',
-            email: authUser.email,
-            matricule: authUser.user_metadata?.matricule || 'N/A',
-            phone: authUser.user_metadata?.phone || ''
-          })
-        }
+        setUserData(user)
+        setUser(authUser || { id: user.user_id })
       } catch (error) {
-        console.error('Error:', error)
+        console.error('Error fetching user:', error)
       }
     }
 
-    getUser()
+    fetchUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        getUser()
+        fetchUser()
       } else {
         setUser(null)
         setUserData(null)
@@ -122,6 +89,14 @@ export default function MobileHeader() {
       default: return 'مستخدم'
     }
   }
+
+  // Filter menu items based on user role
+  const getFilteredMenuItems = () => {
+    if (!userData?.role) return menuItems.filter(item => item.allowedRoles.includes('teacher'))
+    return menuItems.filter(item => item.allowedRoles.includes(userData.role))
+  }
+
+  const filteredMenuItems = getFilteredMenuItems()
 
   return (
     <>
@@ -175,7 +150,7 @@ export default function MobileHeader() {
 
               {/* Menu Items */}
               <div className="space-y-1">
-                {menuItems.map((item) => (
+                {filteredMenuItems.map((item) => (
                   <Link
                     key={item.name}
                     href={item.href}

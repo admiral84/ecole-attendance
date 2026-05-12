@@ -325,11 +325,13 @@ export default function Dashboard() {
             
             {/* Attendance link - only if user can mark absences */}
             {hasPrivilege(userRole, PRIVILEGES.MARK_ABSENCE) && (
-              <Link href="/attendance" className="flex items-center justify-between w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-lg transition">
+              <Link href="/classes" className="flex items-center justify-between w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-lg transition">
                 <span>📝 تسجيل حضور اليوم</span>
                 <span>←</span>
-              </Link>
-            )}
+              </Link>)
+           
+            
+            }
             
             {/* Add Student button - only if user has CREATE_STUDENT privilege */}
             {hasPrivilege(userRole, PRIVILEGES.CREATE_STUDENT) && (

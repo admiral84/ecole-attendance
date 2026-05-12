@@ -1,4 +1,3 @@
-
 'use client'
 
 import Link from 'next/link'
@@ -6,15 +5,18 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { toast } from 'sonner'
+import { getCurrentUser } from '../actions/users'
+import { getRoleLabel } from '../../lib/roles'
 
+// Define menu items with required roles
 const menuItems = [
-  { name: 'لوحة التحكم', href: '/', icon: '🏠' },
-  { name: 'الغيابات', href: '/attendance', icon: '📝' },
-  { name: 'التلاميذ', href: '/students', icon: '👨‍🎓' },
-  { name: 'الأقسام', href: '/classes', icon: '📚' },
-  { name: 'العقوبات', href: '/sanctions', icon: '⚠️' },
-  { name: 'التقارير', href: '/reports', icon: '📊' },
-  { name: 'رفع قائمات التلاميذ', href: '/upload', icon: '📤' }
+  { name: 'لوحة التحكم', href: '/', icon: '🏠', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'الغيابات', href: '/attendance', icon: '📝', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'التلاميذ', href: '/students', icon: '👨‍🎓', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'الأقسام', href: '/classes', icon: '📚', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'العقوبات', href: '/sanctions', icon: '⚠️', allowedRoles: ['admin', 'manager', 'teacher'] },
+  { name: 'التقارير', href: '/reports', icon: '📊', allowedRoles: ['admin', 'manager'] },
+  { name: 'رفع قائمات التلاميذ', href: '/upload', icon: '📤', allowedRoles: ['admin', 'manager'] }
 ]
 
 export default function Sidebar() {
@@ -26,48 +28,18 @@ export default function Sidebar() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const getUser = async () => {
+    const fetchUser = async () => {
       try {
-        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+        const { user, authUser, error } = await getCurrentUser()
         
-        if (authError || !authUser) {
-          console.error('No user found', authError)
+        if (error || !user) {
+          console.error('No user found', error)
           setLoading(false)
           return
         }
 
-        setUser(authUser)
-        
-        const matricule = authUser.user_metadata?.matricule
-        if (matricule) {
-          const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('matricule', matricule)
-            .single()
-          
-          if (!error && data) {
-            setUserData(data)
-          } else {
-            setUserData({
-              nom: authUser.user_metadata?.nom || 'مستخدم',
-              prenom: authUser.user_metadata?.prenom || '',
-              role: authUser.user_metadata?.role || 'teacher',
-              email: authUser.email,
-              matricule: authUser.user_metadata?.matricule || 'N/A',
-              phone: authUser.user_metadata?.phone || ''
-            })
-          }
-        } else {
-          setUserData({
-            nom: authUser.user_metadata?.nom || 'مستخدم',
-            prenom: authUser.user_metadata?.prenom || '',
-            role: authUser.user_metadata?.role || 'teacher',
-            email: authUser.email,
-            matricule: 'N/A',
-            phone: ''
-          })
-        }
+        setUserData(user)
+        setUser(authUser || { id: user.user_id })
       } catch (error) {
         console.error('Error fetching user:', error)
       } finally {
@@ -75,11 +47,11 @@ export default function Sidebar() {
       }
     }
 
-    getUser()
+    fetchUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        getUser()
+        fetchUser()
       } else {
         setUser(null)
         setUserData(null)
@@ -109,15 +81,6 @@ export default function Sidebar() {
     router.push('/profile')
   }
 
-  const getRoleLabel = (role) => {
-    switch(role) {
-      case 'admin': return 'مدير'
-      case 'teacher': return 'أستاذ'
-      case 'manager': return 'إداري'
-      default: return 'مستخدم'
-    }
-  }
-
   const getFullName = () => {
     if (!userData) return 'مستخدم'
     if (userData.nom && userData.prenom) {
@@ -127,6 +90,14 @@ export default function Sidebar() {
     if (userData.prenom) return userData.prenom
     return 'مستخدم'
   }
+
+  // Filter menu items based on user role
+  const getFilteredMenuItems = () => {
+    if (!userData?.role) return menuItems.filter(item => item.allowedRoles.includes('teacher'))
+    return menuItems.filter(item => item.allowedRoles.includes(userData.role))
+  }
+
+  const filteredMenuItems = getFilteredMenuItems()
 
   return (
     <>
@@ -139,7 +110,7 @@ export default function Sidebar() {
         {/* Logo */}
         <div className="flex items-center justify-between p-4 border-b border-blue-700">
           {!isCollapsed && (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 space-x-reverse">
               <span className="text-2xl">🏫</span>
               <span className="font-bold text-lg">معهد عبدالحميد غزواني</span>
             </div>
@@ -156,7 +127,7 @@ export default function Sidebar() {
 
         {/* Navigation */}
         <nav className="mt-6 overflow-y-auto" style={{ height: 'calc(100% - 180px)' }}>
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const isActive = pathname === item.href
             return (
               <Link
@@ -189,7 +160,6 @@ export default function Sidebar() {
             </div>
           ) : user ? (
             <div>
-              {/* Fixed: onClick now uses a function reference, not a function call */}
               <div 
                 onClick={handleProfileClick}
                 className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-3 cursor-pointer hover:bg-blue-800 rounded-lg p-2 transition-colors`}
@@ -201,7 +171,9 @@ export default function Sidebar() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{getFullName()}</p>
                     <p className="text-xs text-blue-200 truncate">{userData?.email || user?.email}</p>
-                    
+                    {userData?.role && (
+                      <p className="text-xs text-blue-300 mt-1">{getRoleLabel(userData.role)}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -251,7 +223,7 @@ export default function Sidebar() {
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 z-20">
         <div className="flex justify-around py-2">
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const isActive = pathname === item.href
             return (
               <Link

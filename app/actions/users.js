@@ -668,3 +668,27 @@ export async function isUserApproved(email) {
     return true
   }
 }
+export async function getCurrentSessionUser() {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (error || !user) {
+      return { user: null, error: 'غير مصرح به' }
+    }
+    
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, nom, prenom')
+      .eq('user_id', user.id)
+      .single()
+    
+    if (userError) {
+      return { user: { role: 'teacher' }, error: null }
+    }
+    
+    return { user: userData, error: null }
+  } catch (error) {
+    return { user: null, error: error.message }
+  }
+}

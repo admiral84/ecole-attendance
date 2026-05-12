@@ -1,12 +1,14 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { supabase } from '../../../lib/supabase/client'
 
-export default function ResetPasswordPage() {
+// Component that uses useSearchParams
+function ResetPasswordForm() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,7 +19,6 @@ export default function ResetPasswordPage() {
   const email = searchParams.get('email')
 
   useEffect(() => {
-    // Check if user has a valid session for password reset
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
@@ -47,7 +48,6 @@ export default function ResetPasswordPage() {
     }
     
     try {
-      // Update the user's password
       const { error: updateError } = await supabase.auth.updateUser({
         password: password
       })
@@ -62,7 +62,6 @@ export default function ResetPasswordPage() {
       setSuccess(true)
       toast.success('تم تغيير كلمة المرور بنجاح')
       
-      // Redirect to login after 3 seconds
       setTimeout(() => {
         router.push('/login')
       }, 3000)
@@ -171,5 +170,18 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Main page with Suspense boundary
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }
