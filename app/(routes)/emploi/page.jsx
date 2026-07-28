@@ -1,10 +1,11 @@
 // app/(auth)/complete-profile/page.jsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../../lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { saveTeacherSeances } from '../../actions/seances'
 
 export default function CompleteProfilePage() {
   const router = useRouter()
@@ -25,6 +26,11 @@ export default function CompleteProfilePage() {
     fin_heure: '9',
     id_classe: ''
   })
+  
+  // Add a ref to track if component is mounted
+  const isMounted = useRef(true)
+  // Add auth listener cleanup ref
+  const authListenerRef = useRef(null)
 
   const days = [
     { arabic: 'الإثنين', french: 'lundi' },
@@ -43,30 +49,31 @@ export default function CompleteProfilePage() {
   const startTimes = Array.from({ length: 10 }, (_, i) => i + 8)
   const endTimes = Array.from({ length: 10 }, (_, i) => i + 9)
 
+  // Cleanup on unmount
   useEffect(() => {
-    checkUserAndLoadData()
+    isMounted.current = true
     
-    const handleResize = () => {
-      const width = window.innerWidth
-      setMobileView(width < 768)
-      setTableView(width >= 768 && width < 1024)
+    return () => {
+      isMounted.current = false
+      // Cleanup auth listener
+      if (authListenerRef.current) {
+        authListenerRef.current.unsubscribe()
+      }
     }
-    
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    
-    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  async function checkUserAndLoadData() {
+  const checkUserAndLoadData = useCallback(async () => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError || !session) {
-        router.push('/login')
+        if (isMounted.current) {
+          router.push('/login')
+        }
         return
       }
 
+      if (!isMounted.current) return
       setUser(session.user)
 
       const { data: userData, error: userError } = await supabase
@@ -77,20 +84,25 @@ export default function CompleteProfilePage() {
 
       if (userError) {
         console.error('Error fetching user:', userError)
-        toast.error('خطأ في تحميل بيانات المستخدم')
+        if (isMounted.current) {
+          toast.error('خطأ في تحميل بيانات المستخدم')
+        }
         return
       }
 
       if (userData.role !== 'teacher') {
-        toast.error('هذه الصفحة مخصصة للمعلمين فقط')
-        router.push('/')
+        if (isMounted.current) {
+          toast.error('هذه الصفحة مخصصة للمعلمين فقط')
+          router.push('/')
+        }
         return
       }
 
-      setUserId(userData.user_id)
-
-      if (userData.code_matiere) {
-        setSelectedMatiere(userData.code_matiere)
+      if (isMounted.current) {
+        setUserId(userData.user_id)
+        if (userData.code_matiere) {
+          setSelectedMatiere(userData.code_matiere)
+        }
       }
 
       // Load existing seances using user_id
@@ -104,9 +116,7 @@ export default function CompleteProfilePage() {
         `)
         .eq('user_id', userData.user_id)
 
-      if (seancesError) {
-        console.error('Error loading seances:', seancesError)
-      } else if (existingSeances) {
+      if (!seancesError && existingSeances && isMounted.current) {
         setSeances(existingSeances)
       }
 
@@ -115,11 +125,13 @@ export default function CompleteProfilePage() {
         .select('id_class, libelle')
         .order('libelle')
 
-      if (classesError) {
-        console.error('Error loading classes:', classesError)
-        toast.error('خطأ في تحميل قائمة الأقسام')
-      } else {
+      if (!classesError && classesData && isMounted.current) {
         setClasses(classesData || [])
+      } else if (classesError) {
+        console.error('Error loading classes:', classesError)
+        if (isMounted.current) {
+          toast.error('خطأ في تحميل قائمة الأقسام')
+        }
       }
 
       const { data: matieresData, error: matieresError } = await supabase
@@ -127,18 +139,54 @@ export default function CompleteProfilePage() {
         .select('code_matiere, libelle')
         .order('libelle')
 
-      if (matieresError) {
-        console.error('Error loading subjects:', matieresError)
-        toast.error('خطأ في تحميل قائمة المواد')
-      } else {
+      if (!matieresError && matieresData && isMounted.current) {
         setMatieres(matieresData || [])
+      } else if (matieresError) {
+        console.error('Error loading subjects:', matieresError)
+        if (isMounted.current) {
+          toast.error('خطأ في تحميل قائمة المواد')
+        }
       }
 
     } catch (error) {
       console.error('Error:', error)
-      toast.error('حدث خطأ غير متوقع')
+      if (isMounted.current) {
+        toast.error('حدث خطأ غير متوقع')
+      }
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    checkUserAndLoadData()
+    
+    // Set up auth listener with proper cleanup
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        if (isMounted.current) {
+          router.push('/login')
+        }
+      }
+    })
+    
+    authListenerRef.current = subscription
+    
+    const handleResize = () => {
+      if (!isMounted.current) return
+      const width = window.innerWidth
+      setMobileView(width < 768)
+      setTableView(width >= 768 && width < 1024)
+    }
+    
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (subscription) {
+        subscription.unsubscribe()
+      }
+    }
+  }, [checkUserAndLoadData, router])
 
   async function saveTeacherSubject() {
     if (!selectedMatiere) {
@@ -331,26 +379,14 @@ export default function CompleteProfilePage() {
     setLoading(true)
 
     try {
+      // First save the teacher's subject
       const subjectSaved = await saveTeacherSubject()
       if (!subjectSaved) {
         setLoading(false)
         return
       }
 
-      // Delete existing seances using user_id
-      const { error: deleteError } = await supabase
-        .from('seance')
-        .delete()
-        .eq('user_id', userId)
-
-      if (deleteError) {
-        console.error('Error deleting existing seances:', deleteError)
-        toast.error(`حدث خطأ في تحديث الجدول: ${deleteError.message}`)
-        setLoading(false)
-        return
-      }
-
-      // Prepare seances for insertion
+      // Prepare seances for insertion (remove temporary id and classes)
       const seancesToInsert = seances.map(({ id, classes, ...seance }) => ({
         jour: seance.jour,
         debut_heure: seance.debut_heure,
@@ -360,25 +396,17 @@ export default function CompleteProfilePage() {
         code_matiere: selectedMatiere
       }))
 
-      if (seancesToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('seance')
-          .insert(seancesToInsert)
-
-        if (insertError) {
-          console.error('Error saving seances:', insertError)
-          toast.error(`حدث خطأ في حفظ الجدول: ${insertError.message}`)
-          setLoading(false)
-          return
-        }
-      }
-
-      toast.success('تم حفظ الجدول بنجاح!')
+      // Use server action to save seances
+      const result = await saveTeacherSeances(seancesToInsert, selectedMatiere)
       
-      setTimeout(() => {
-        router.push('/')
-      }, 2000)
-
+      if (result.success) {
+        toast.success('تم حفظ الجدول بنجاح!')
+        setTimeout(() => {
+          router.push('/')
+        }, 2000)
+      } else {
+        toast.error(result.error || 'حدث خطأ في حفظ الجدول')
+      }
     } catch (error) {
       console.error('Error:', error)
       toast.error('حدث خطأ غير متوقع')
@@ -530,14 +558,14 @@ export default function CompleteProfilePage() {
               
               if (!seance || !isStart) {
                 return (
-                  <>
-                    <div key={`${timeSlot}-time`} className="p-3 text-center text-gray-500 text-xs border-t">
+                  <React.Fragment key={timeSlot}>
+                    <div className="p-3 text-center text-gray-500 text-xs border-t">
                       {timeSlot}
                     </div>
-                    <div key={`${timeSlot}-content`} className="p-3 text-center text-gray-400 border-t">
+                    <div className="p-3 text-center text-gray-400 border-t">
                       —
                     </div>
-                  </>
+                  </React.Fragment>
                 )
               }
               
@@ -548,8 +576,8 @@ export default function CompleteProfilePage() {
               const matiereLibelle = matieres.find(m => m.code_matiere === selectedMatiere)?.libelle
               
               return (
-                <>
-                  <div key={`${timeSlot}-time`} className="p-3 text-center text-gray-700 text-xs font-medium border-t bg-blue-50">
+                <React.Fragment key={timeSlot}>
+                  <div className="p-3 text-center text-gray-700 text-xs font-medium border-t bg-blue-50">
                     {timeSlot} - {endTime}
                   </div>
                   <div className="p-3 border-t bg-blue-50">
@@ -572,7 +600,7 @@ export default function CompleteProfilePage() {
                       </button>
                     </div>
                   </div>
-                </>
+                </React.Fragment>
               )
             })}
           </div>
@@ -763,7 +791,7 @@ export default function CompleteProfilePage() {
             </div>
 
             {/* Schedule Display - Responsive */}
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 mb-32">
               <h2 className="text-lg sm:text-xl font-bold mb-4">جدول الحصص الأسبوعي</h2>
               
               {mobileView ? (
@@ -891,38 +919,31 @@ export default function CompleteProfilePage() {
               )}
             </div>
 
-            {/* Legend and Save Button */}
-            {seances.length > 0 && (
-              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-                <div className="bg-white rounded-xl shadow p-3 sm:p-4">
-                  <h3 className="font-semibold mb-2 text-sm">إرشادات:</h3>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li>• مرر الماوس فوق أي حصة لتظهر أزرار التعديل والحذف</li>
-                    <li className="hidden sm:block">• الحصص تمتد أفقياً عبر الساعات المحددة</li>
-                    <li>• يمكنك تعديل أو حذف أي حصة من الجدول مباشرة</li>
-                    <li>• جميع الحصص تحمل نفس المادة التي اخترتها</li>
-                  </ul>
-                </div>
-                
+            {/* Save Button - Centered at bottom */}
+            <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center pb-4 sm:pb-6 pointer-events-none">
+              <div className="pointer-events-auto">
                 <button
                   onClick={saveAllSeances}
                   disabled={loading}
-                  className="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm sm:text-base lg:text-lg transition-all duration-200 disabled:opacity-50 whitespace-nowrap shadow-lg hover:shadow-xl"
+                  className="px-8 sm:px-12 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-bold text-base sm:text-lg lg:text-xl transition-all duration-200 disabled:opacity-50 shadow-2xl hover:shadow-3xl min-w-[200px] sm:min-w-[250px] transform hover:scale-105 active:scale-95"
                 >
                   {loading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <span className="flex items-center justify-center gap-3">
+                      <svg className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      جاري الحفظ...
+                      <span>جاري الحفظ...</span>
                     </span>
                   ) : (
                     'حفظ الجدول'
                   )}
                 </button>
               </div>
-            )}
+            </div>
+
+            {/* Add padding at bottom to prevent button overlap */}
+            <div className="h-20 sm:h-24"></div>
           </>
         )}
 

@@ -130,6 +130,7 @@ export async function getClasses() {
 }
 
 // Get students by class ID
+// Get students by class ID
 export async function getStudentsByClass(classId) {
   try {
     const supabase = await createClient()
@@ -148,17 +149,25 @@ export async function getStudentsByClass(classId) {
     
     // TEACHER: Verify they have permission to access this class
     if (userData.role === 'teacher') {
-      const { data: seance, error: seanceError } = await supabase
+      // CHANGE: Use .select() instead of .maybeSingle() to get ALL seances
+      const { data: seances, error: seanceError } = await supabase
         .from('seance')
         .select('id')
         .eq('user_id', userData.user_id)
         .eq('id_classe', classId)
-        .maybeSingle()
       
-      if (seanceError || !seance) {
-        console.warn(`Teacher ${user.id} attempted to access unauthorized class ${classId}`)
+      if (seanceError) {
+        console.error('Seance query error:', seanceError)
+        return { success: false, error: 'خطأ في التحقق من الصلاحيات', data: [] }
+      }
+      
+      // Check if there's at least one seance (teacher can have multiple)
+      if (!seances || seances.length === 0) {
+        console.warn(`Teacher ${user.id} has no seances for class ${classId}`)
         return { success: false, error: 'غير مصرح به - أنت غير مسؤول عن هذا القسم', data: [] }
       }
+      
+      console.log(`Teacher has ${seances.length} seance(s) for class ${classId}`)
     }
     
     const { data: students, error: studentsError } = await supabase
@@ -183,7 +192,10 @@ export async function getStudentsByClass(classId) {
       pere: student.pere || '',
       parentphone: student.parentphone || '',
       present: student.present,
-      date_naissance: student.date_naissance || null
+      date_naissance: student.date_naissance || null,
+      hasActiveAbsence: false,
+      absenceStartDate: null,
+      absenceStartTime: null
     }))
     
     return { success: true, data: formattedStudents }
@@ -218,7 +230,7 @@ export async function getStudentById(studentId) {
         .select('id')
         .eq('user_id', userData.user_id)
         .eq('id_classe', student.id_class)
-        .maybeSingle()
+        .select()
       
       if (seanceError || !seance) {
         throw new Error('غير مصرح به - هذا التلميذ ليس في أقسامك')
@@ -300,28 +312,47 @@ export async function updateStudent(studentData) {
 }
 
 // Create new student (admin/manager only)
+// Create new student (admin/manager only)
+// Helper: Get class ID by libelle
+async function getClassIdByLibelle(supabase, libelle) {
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id_class')
+    .eq('libelle', libelle)
+    .single()
+  
+  if (error || !data) {
+    return null
+  }
+  
+  return data.id_class
+}
+
+// Create new student (admin/manager only)
 export async function createStudent(studentData) {
   try {
     const supabase = await createClient()
     const user = await requireUser(supabase)
     await requireAdminOrManager(supabase, user)
     
-    if (!studentData.nom || !studentData.id_class) {
-      throw new Error('الاسم والقسم مطلوبان')
+    // Validation
+    if (!studentData.id_eleve || !studentData.nom || !studentData.id_class) {
+      throw new Error('رقم التسجيل، الاسم والقسم مطلوبة')
     }
+    
+    // Get class ID by libelle
+    const classId = await getClassIdByLibelle(supabase, studentData.id_class)
     
     const { data, error } = await supabase
       .from('eleve')
       .insert([{
-        id_eleve: studentData.num_eleve || studentData.id_eleve,
+        id_eleve: studentData.id_eleve,
         nom: studentData.nom,
-        prenom: studentData.prenom || '',
         pere: studentData.pere || '',
-        parentphone: studentData.phone || studentData.parentphone || '',
+        parentphone: studentData.parentphone || '',
         num: studentData.num || '',
-        id_class: studentData.id_class,
-        date_naissance: studentData.date_naissance || null,
-        present: true
+        id_class: classId,
+        date_naissance: studentData.date_naissance || null
       }])
       .select()
     
@@ -337,7 +368,6 @@ export async function createStudent(studentData) {
     return { success: false, error: error.message }
   }
 }
-
 // Get student count by class
 export async function getStudentCountByClass() {
   try {

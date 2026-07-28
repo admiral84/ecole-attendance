@@ -161,7 +161,7 @@ export async function getCurrentUser() {
     
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
-    if (authError || !user) {
+    if (  !user) {
       return { error: 'غير مصرح به', user: null, authUser: null }
     }
     
@@ -176,7 +176,7 @@ export async function getCurrentUser() {
         user_id: user.id,
         matricule: user.user_metadata?.matricule || user.id.substring(0, 8),
         nom: user.user_metadata?.nom || 'مستخدم',
-        prenom: user.user_metadata?.prenom || '',
+        
         role: user.user_metadata?.role || 'teacher',
         email: user.email,
         approved: true
@@ -312,6 +312,17 @@ export async function deleteUser(userId) {
     
     if (userId === user.id) {
       return { error: 'لا يمكنك حذف حسابك الخاص', success: false }
+    }
+    
+    // Delete device tokens before deleting user
+    const { error: deviceTokensError } = await supabase
+      .from('device_tokens')
+      .delete()
+      .eq('user_id', userId)
+    
+    if (deviceTokensError) {
+      console.error('Error deleting device tokens:', deviceTokensError)
+      // Continue with user deletion even if device tokens deletion fails
     }
     
     const adminClient = getAdminClient()
@@ -551,79 +562,60 @@ export async function updateUserApproval(userId, approved) {
 export async function checkEmailExists(email) {
   try {
     const supabase = await createClient()
-    
+
     if (!email || email.trim() === '') {
-      return { exists: false, approved: false, error: null }
+      return {
+        exists: false,
+        approved: false,
+        userId: null,
+        error: 'Email is required'
+      }
     }
-    
+
     const formattedEmail = email.trim().toLowerCase()
-    
-    console.log('Checking email existence for:', formattedEmail)
-    
-    // Try to get user from your users table
-    const { data: dbUser, error: dbError } = await supabase
+
+    const { data: user, error } = await supabase
       .from('users')
-      .select('user_id, email, approved, role, nom')
+      .select('user_id, approved')
       .eq('email', formattedEmail)
       .maybeSingle()
-    
-    if (dbError) {
-      console.error('Database error in checkEmailExists:', dbError)
-      return { exists: true, approved: true, error: null }
-    }
-    
-    if (dbUser) {
-      console.log('User found in database:', { email: dbUser.email, approved: dbUser.approved })
-      return { 
-        exists: true, 
-        approved: dbUser.approved === true,
-        userId: dbUser.user_id,
-        error: null 
+
+    if (error) {
+      console.error('checkEmailExists:', error)
+
+      return {
+        exists: false,
+        approved: false,
+        userId: null,
+        error: error.message
       }
     }
-    
-    // If not found in users table, check auth users
-    const adminClient = getAdminClient()
-    if (adminClient) {
-      try {
-        const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers()
-        
-        if (!listError && users) {
-          const authUser = users.find(user => user.email === formattedEmail)
-          if (authUser) {
-            console.log('User found in auth but not in users table:', formattedEmail)
-            
-            // Create user in database automatically
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert([{
-                user_id: authUser.id,
-                email: formattedEmail,
-                nom: authUser.user_metadata?.nom || 'مستخدم',
-                prenom: authUser.user_metadata?.prenom || '',
-                role: authUser.user_metadata?.role || 'user',
-                matricule: authUser.user_metadata?.matricule || authUser.id.substring(0, 8),
-                approved: true  // Auto-approve
-              }])
-            
-            if (!insertError) {
-              return { exists: true, approved: true, userId: authUser.id, error: null }
-            }
-          }
-        }
-      } catch (adminError) {
-        console.error('Admin client error, but continuing:', adminError)
-        return { exists: true, approved: true, error: null }
+
+    if (!user) {
+      return {
+        exists: false,
+        approved: false,
+        userId: null,
+        error: null
       }
     }
-    
-    // If we can't verify, assume user exists to avoid blocking login
-    console.log('Could not verify email, assuming exists:', formattedEmail)
-    return { exists: true, approved: true, error: null }
-    
+
+    return {
+      exists: true,
+      approved: Boolean(user.approved),
+      userId: user.user_id,
+      error: null
+    }
+
   } catch (error) {
-    console.error('Unexpected error in checkEmailExists:', error)
-    return { exists: true, approved: true, error: null }
+    console.error('Unexpected error:', error)
+
+    return {
+      exists: false,
+      approved: false,
+      userId: null,
+      error: error.message
+    }
   }
 }
 
@@ -690,5 +682,59 @@ export async function getCurrentSessionUser() {
     return { user: userData, error: null }
   } catch (error) {
     return { user: null, error: error.message }
+  }
+}
+
+
+
+
+
+export async function verifyRecoveryOTP(email, token) {
+  try {
+    if (!email || !token) {
+      return {
+        success: false,
+        error: 'Email and OTP are required'
+      }
+    }
+
+    if (token.length !== 8) {
+      return {
+        success: false,
+        error: 'OTP must contain 8 digits'
+      }
+    }
+
+    const supabase = await createClient()
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: token.trim(),
+      type: 'recovery'
+    })
+
+    if (error) {
+      console.error('OTP verification error:', error)
+
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+
+    return {
+      success: true,
+      session: data.session,
+      user: data.user,
+      error: null
+    }
+
+  } catch (err) {
+    console.error(err)
+
+    return {
+      success: false,
+      error: 'Unexpected error occurred'
+    }
   }
 }

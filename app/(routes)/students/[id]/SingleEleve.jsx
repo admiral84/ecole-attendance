@@ -18,7 +18,7 @@ export default function SingleEleve({ student, classInfo, attendance: initialAtt
   const [loadingSanctions, setLoadingSanctions] = useState(false)
 
   // ✅ Check if user can add sanctions (admin or manager only)
-  const canAddSanctions = userRole === 'admin' || userRole === 'manager'
+  const canAddSanctions = userRole === 'admin' || userRole === 'manager' || userRole === 'teacher' 
 
   // Fetch functions
   const fetchAttendanceHistory = async () => {
@@ -137,7 +137,7 @@ export default function SingleEleve({ student, classInfo, attendance: initialAtt
           userRole === 'manager' ? 'bg-yellow-100 text-yellow-700' :
           'bg-blue-100 text-blue-700'
         }`}>
-          {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'}
+          {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'إداري' : 'أستاذ'}
         </span>
       </div>
 

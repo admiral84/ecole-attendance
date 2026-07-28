@@ -197,13 +197,13 @@ export async function getSanctions(filters = {}) {
     if (studentIds.length > 0) {
       const { data: students } = await supabase
         .from('eleve')
-        .select('id_eleve, nom, prenom, num')
+        .select('id_eleve, nom,  num')
         .in('id_eleve', studentIds)
       
       if (students) {
         students.forEach(student => {
           studentMap.set(student.id_eleve, {
-            name: `${student.nom || ''} ${student.prenom || ''}`.trim() || 'غير معروف',
+            name: `${student.nom || ''}`.trim() || 'غير معروف',
             num: student.num || '-'
           })
         })

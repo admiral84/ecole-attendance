@@ -6,11 +6,13 @@ import {
   getAbsentStudentsByClass, 
   getTeacherClasses, 
   markStudentPresent,
-  sendAbsenceNotification
+  
+  checkNotificationsExist,
+  deleteNotification
 } from '../../actions/absence'
 import { getCurrentUser } from '../../actions/users'
 import { toast } from 'sonner'
-import { CheckCircle, XCircle, UserCheck, AlertCircle, RefreshCw, GraduationCap, Bell, ArrowLeftCircle, FileText } from 'lucide-react'
+import { CheckCircle, XCircle, UserCheck, AlertCircle, RefreshCw, GraduationCap, Bell, ArrowLeftCircle, FileText, Trash2 } from 'lucide-react'
 import Billet from '../../components/Billet'
 import { ROLES } from '../../../lib/roles'
 
@@ -147,13 +149,27 @@ export default function AttendanceClient() {
   const fetchAbsentStudentsByClass = async (classId) => {
     if (!classId) return
     setLoading(true)
+    
     const result = await getStudentsWithPresentFalse()
     
     if (result.success) {
       const filteredStudents = result.data.filter(
         student => student.id_class === classId
       )
-      setAbsentStudents(filteredStudents.map(student => ({
+      
+      // Get all student IDs and absence dates for batch check
+      const studentIds = filteredStudents.map(s => s.id_eleve)
+      const absenceDates = filteredStudents.map(s => s.absence_start_date)
+      
+      // Check notifications for all students in one query
+      const { data: notifMap } = await checkNotificationsExist(
+        classId,
+        studentIds,
+        absenceDates
+      )
+      
+      // Add hasNotification status to each student
+      const studentsWithNotifStatus = filteredStudents.map(student => ({
         id_eleve: student.id_eleve,
         nom: student.nom,
         num: student.num,
@@ -164,14 +180,27 @@ export default function AttendanceClient() {
         absence_start_time: student.absence_start_time,
         absence_end_date: student.absence_end_date,
         absence_end_time: student.absence_end_time,
-        is_returned: student.is_returned || false
-      })))
+        is_returned: student.is_returned || false,
+        hasNotification: !!notifMap?.[`${student.id_eleve}-${student.absence_start_date}`]
+      }))
+      
+      setAbsentStudents(studentsWithNotifStatus)
     } else {
       console.error('Error loading absent students:', result.error)
       toast.error(result.error)
       setAbsentStudents([])
     }
     setLoading(false)
+  }
+
+  // Refresh function to reload data
+  const refreshData = async () => {
+    if (userRole === ROLES.TEACHER && selectedClass) {
+      await fetchAbsentStudentsByClass(selectedClass)
+    }
+    if (userRole === ROLES.ADMIN || userRole === ROLES.MANAGER) {
+      await fetchAllAbsentStudents()
+    }
   }
 
   useEffect(() => {
@@ -198,61 +227,68 @@ export default function AttendanceClient() {
     setShowAbsenceDetails(true)
   }
 
-  const handleMarkReturned = async (studentId, classId, absenceStartDate, absenceStartTime) => {
-    const endDate = new Date().toISOString().split('T')[0]
-    const endTime = new Date().toTimeString().slice(0, 5)
-    const startDate = absenceStartDate || endDate
-    const startTime = absenceStartTime || '08:00'
-    
-    const result = await markStudentPresent(studentId, classId, startDate, startTime, endDate, endTime)
-    
-    if (result.success) {
-      toast.success('تم تسجيل عودة التلميذ بنجاح')
-      if (userRole === ROLES.ADMIN || userRole === ROLES.MANAGER) {
-        await fetchAllAbsentStudents()
-      } else {
-        await fetchAbsentStudentsByClass(selectedClass)
-      }
-    } else {
-      toast.error(result.error || 'حدث خطأ في تسجيل العودة')
-    }
+const handleMarkReturned = async (studentId, classId, absenceStartDate, absenceStartTime, justified) => {
+  console.log('\n========== HANDLE MARK RETURNED ==========')
+  console.log('📥 Received parameters:')
+  console.log('  ├─ studentId:', studentId)
+  console.log('  ├─ classId:', classId)
+  console.log('  ├─ absenceStartDate:', absenceStartDate)
+  console.log('  ├─ absenceStartTime:', absenceStartTime)
+  console.log('  └─ justified:', justified)
+  
+  const endDate = new Date().toISOString().split('T')[0]
+  const endTime = new Date().toTimeString().slice(0, 5)
+  const startDate = absenceStartDate || endDate
+  const startTime = absenceStartTime || '08:00'
+  
+  console.log('\n📅 Calculated dates:')
+  console.log('  ├─ startDate:', startDate)
+  console.log('  ├─ startTime:', startTime)
+  console.log('  ├─ endDate:', endDate)
+  console.log('  └─ endTime:', endTime)
+  
+  console.log('\n📤 Calling markStudentPresent with:')
+  console.log('  ├─ studentId:', studentId)
+  console.log('  ├─ classId:', classId)
+  console.log('  ├─ startDate:', startDate)
+  console.log('  ├─ startTime:', startTime)
+  console.log('  ├─ endDate:', endDate)
+  console.log('  ├─ endTime:', endTime)
+  console.log('  └─ justified:', justified)
+  
+  const result = await markStudentPresent(studentId, classId, startDate, startTime, endDate, endTime, justified)
+  
+  console.log('\n📥 markStudentPresent result:', result)
+  console.log('========== END HANDLE MARK RETURNED ==========\n')
+  
+  if (result.success) {
+    toast.success('تم تسجيل عودة التلميذ بنجاح')
+    handleDeleteNotification(studentId);
+    await refreshData()
+  } else {
+    toast.error(result.error || 'حدث خطأ في تسجيل العودة')
   }
-
-  const handleBilletConfirm = async (studentId, isJustified) => {
-    const absenceStartDate = selectedStudent.absence_start_date || new Date().toISOString().split('T')[0]
-    const absenceStartTime = selectedStudent.absence_start_time || '08:00'
-    
-    const notificationResult = await sendAbsenceNotification(
-      studentId,
-      selectedStudentClass,
-      absenceStartDate,
-      absenceStartTime,
-      isJustified
-    )
-    
-    if (!notificationResult.success) {
-      toast.error(notificationResult.error || 'حدث خطأ في إرسال الإشعار')
+}
+ 
+  // Delete notification handler
+  const handleDeleteNotification = async (studentId) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الإشعار؟')) {
       return
     }
     
-    toast.success(isJustified 
-      ? `تم إرسال إشعار إلى الأستاذ (غياب مبرر) - ${notificationResult.teacherName || ''}`
-      : `تم إرسال إشعار إلى الأستاذ - ${notificationResult.teacherName || ''}`
-    )
+    const result = await deleteNotification(studentId)
     
-    setShowBillet(false)
-    setSelectedStudent(null)
-    setSelectedStudentClass('')
+    if (result.success) {
+      toast.success('تم حذف الإشعار بنجاح')
+      await refreshData()
+    } else {
+      toast.error(result.error || 'فشل في حذف الإشعار')
+    }
   }
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    if (userRole === ROLES.TEACHER && selectedClass) {
-      await fetchAbsentStudentsByClass(selectedClass)
-    }
-    if (userRole === ROLES.ADMIN || userRole === ROLES.MANAGER) {
-      await fetchAllAbsentStudents()
-    }
+    await refreshData()
     setRefreshing(false)
     toast.success('تم تحديث البيانات')
   }
@@ -556,6 +592,7 @@ export default function AttendanceClient() {
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ البدء</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">وقت البدء</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
+                        <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">حالة الإشعار</th>
                         <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الإجراءات</th>
                       </tr>
                     </thead>
@@ -571,21 +608,56 @@ export default function AttendanceClient() {
                             {getStatusBadge(student.justified, student.is_returned)}
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            {student.hasNotification ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                <CheckCircle size={12} />
+                                تم الإشعار
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                <AlertCircle size={12} />
+                                ينتظر الإشعار
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             <div className="flex gap-2 flex-wrap">
                               {!student.is_returned && (
-                                <button
-                                  onClick={() => handleMarkReturned(
-                                    student.id_eleve,
-                                    selectedClass,
-                                    student.absence_start_date,
-                                    student.absence_start_time
-                                  )}
-                                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1 text-sm"
-                                  type="button"
-                                >
-                                  <ArrowLeftCircle size={14} />
-                                  تسجيل عودة
-                                </button>
+                                <>
+                                  <button
+ 
+  onClick={() => {
+    console.log('========== MARK RETURNED CLICKED ==========')
+    console.log('📚 Student Info:')
+    console.log('  ├─ student.id_eleve:', student.id_eleve)
+    console.log('  ├─ selectedClass:', selectedClass)
+    console.log('  ├─ student.absence_start_date:', student.absence_start_date)
+    console.log('  ├─ student.absence_start_time:', student.absence_start_time)
+    console.log('  ├─ student.justified:', student.justified)
+    console.log('  ├─ student.hasNotification:', student.hasNotification)
+    console.log('  └─ student.nom:', student.nom)
+    
+    handleMarkReturned(
+      student.id_eleve,
+      selectedClass,
+      student.absence_start_date,
+      student.absence_start_time,
+      student.justified
+    )
+  }}
+  disabled={!student.hasNotification}
+  className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm ${
+    student.hasNotification 
+      ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+  }`}
+  type="button"
+>
+  <ArrowLeftCircle size={14} />
+  تسجيل عودة
+</button>
+                                 
+                                </>
                               )}
                               <button
                                 onClick={() => handleViewAbsenceDetails(student)}
@@ -612,12 +684,19 @@ export default function AttendanceClient() {
         <Billet
           student={selectedStudent}
           classLibelle={selectedStudentClass}
+          userId={userRole}
+          currentUserName={''}
           onClose={() => {
             setShowBillet(false)
             setSelectedStudent(null)
             setSelectedStudentClass('')
           }}
-          onConfirm={handleBilletConfirm}
+          onSuccess={() => {
+            setShowBillet(false)
+            setSelectedStudent(null)
+            setSelectedStudentClass('')
+            refreshData()
+          }}
         />
       )}
 

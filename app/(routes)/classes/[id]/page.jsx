@@ -34,7 +34,7 @@ export default async function page({ params }) {
       .select('id')
       .eq('user_id', userData.user_id)
       .eq('id_classe', id)
-      .maybeSingle()
+      .select()
     
     if (seanceError || !seance) {
       notFound() // Teacher cannot access this class

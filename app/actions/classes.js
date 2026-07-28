@@ -83,19 +83,18 @@ export async function getAllClasses() {
   }
 }
 
+
 // Get class by ID (with permission check)
 export async function getClassById(classId) {
   try {
     const supabase = await createClient()
     
-    // 1. Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
       return { success: false, error: 'غير مصرح به', data: null }
     }
     
-    // 2. Get user role
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role, user_id')
@@ -106,22 +105,28 @@ export async function getClassById(classId) {
       return { success: false, error: 'لم يتم العثور على المستخدم', data: null }
     }
     
-    // 3. TEACHER: Verify they have permission to view this class
+    // TEACHER: Verify they have permission to view this class
     if (userData.role === 'teacher') {
-      const { data: seance, error: seanceError } = await supabase
+      // CHANGE: Use .select() instead of .maybeSingle()
+      const { data: seances, error: seanceError } = await supabase
         .from('seance')
         .select('id')
         .eq('user_id', userData.user_id)
         .eq('id_classe', classId)
-        .maybeSingle()
       
-      if (seanceError || !seance) {
+      if (seanceError) {
+        console.error('Seance query error:', seanceError)
+        return { success: false, error: 'خطأ في التحقق من الصلاحيات', data: null }
+      }
+      
+      if (!seances || seances.length === 0) {
         console.warn(`Teacher ${user.id} attempted to access unauthorized class ${classId}`)
         return { success: false, error: 'غير مصرح به - أنت غير مسؤول عن هذا القسم', data: null }
       }
+      
+      console.log(`Teacher has ${seances.length} seance(s) for class ${classId}`)
     }
     
-    // 4. Get class data
     const { data: classData, error: classError } = await supabase
       .from('classes')
       .select('*')
@@ -385,4 +390,19 @@ export async function deleteClass(classId) {
     console.error('Error in deleteClass:', error)
     return { success: false, error: 'حدث خطأ غير متوقع' }
   }
+}
+
+// Helper: Get class ID by libelle (class name)
+async function getClassIdByLibelle(supabase, libelle) {
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id_class')
+    .eq('libelle', libelle)
+    .single()
+  
+  if (error || !data) {
+    return null
+  }
+  
+  return data.id_class
 }

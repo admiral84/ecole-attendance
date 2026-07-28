@@ -48,7 +48,7 @@ export default function StudentsClient({ students, classes, userRole }) {
 
   // Determine permissions based on role
   const canModify = userRole === 'admin' || userRole === 'manager'
-  const roleLabel = userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'
+  const roleLabel = userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'إداري' : 'أستاذ'
 
   // Handle adding a new student
   const handleStudentAdded = (newStudent) => {

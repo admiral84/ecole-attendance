@@ -467,18 +467,8 @@ export default function Profile() {
                   <label className="text-gray-600">المعرف:</label>
                   <p className="text-gray-800 font-mono">{user?.matricule}</p>
                 </div>
-                <div>
-                  <label className="text-gray-600">تاريخ التسجيل:</label>
-                  <p className="text-gray-800">
-                    {user?.created_at ? new Date(user.created_at).toLocaleDateString('ar') : '—'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-gray-600">آخر تحديث:</label>
-                  <p className="text-gray-800">
-                    {user?.updated_at ? new Date(user.updated_at).toLocaleDateString('ar') : '—'}
-                  </p>
-                </div>
+                
+                
               </div>
             </div>
           </div>

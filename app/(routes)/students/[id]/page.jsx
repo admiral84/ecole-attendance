@@ -4,6 +4,7 @@ import { getSanctionsByStudent } from '../../../actions/sanctions'
 import { getClassById } from '../../../actions/classes'
 import { getAttendanceByStudent } from "../../../actions/absence"
 import { getCurrentUser } from '../../../actions/users'
+import { createClient } from '../../../../lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
@@ -41,7 +42,7 @@ export default async function StudentPage({ params }) {
       .select('id')
       .eq('user_id', currentUser.user_id)
       .eq('id_classe', student.id_class)
-      .maybeSingle()
+      .select()
     
     if (!seance) {
       return (

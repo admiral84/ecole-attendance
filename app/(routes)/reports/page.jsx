@@ -75,68 +75,72 @@ export default function ReportsPage() {
     try {
       setLoading(true)
       
-      // Fetch current active absences (students with present = false)
+      // 1. Get students with present = false (active absences)
       const activeResult = await getStudentsWithPresentFalse()
       
-      // Fetch absences from today's date range
-      const todayResult = await getAbsentStudentsByDateRange(todayDate)
+      // 2. Get absences that start OR end today (using the updated function)
+      const todayAbsencesResult = await getAbsentStudentsByDateRange(todayDate, 'both')
       
       let allAbsences = []
-      
-      // Process active absences
-      if (activeResult.success && activeResult.data) {
-        const activeAbsences = activeResult.data.map(item => ({
-          id: item.absence_id || item.id,
-          nom: item.nom || 'غير معروف',
-          num: item.num || '-',
-          class_libelle: item.class_libelle || 'بدون قسم',
-          id_classe: item.id_class,
-          debut: item.absence_start_date,
-          heure_deb: item.absence_start_time,
-          fin: item.absence_end_date,
-          heure_fin: item.absence_end_time,
-          justified: item.justified || false,
-          present: item.present,
-          type: 'active'
-        }))
-        allAbsences.push(...activeAbsences)
-      }
-      
-      // Process today's absences (those that started today or ended today)
-      if (todayResult.success && todayResult.data) {
-        const todayAbsences = todayResult.data
-          .filter(item => {
-            // Include if absence starts today OR ends today
-            const startsToday = item.absence_start_date === todayDate
-            const endsToday = item.absence_end_date === todayDate
-            return startsToday || endsToday
-          })
-          .map(item => ({
-            id: item.id,
-            nom: item.student_name || 'غير معروف',
-            num: item.student_num || '-',
-            class_libelle: item.class_libelle || 'بدون قسم',
-            id_classe: null,
-            debut: item.absence_start_date,
-            heure_deb: item.absence_start_time,
-            fin: item.absence_end_date,
-            heure_fin: item.absence_end_time,
-            justified: item.justified || false,
-            present: item.present,
-            type: 'today'
-          }))
-        allAbsences.push(...todayAbsences)
-      }
-      
-      // Remove duplicates based on student name + date
       const uniqueMap = new Map()
-      for (const item of allAbsences) {
-        const key = `${item.nom}-${item.num}-${item.debut}`
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, item)
-        }
+      
+      // Process active absences (present = false)
+      if (activeResult.success && activeResult.data) {
+        activeResult.data.forEach(item => {
+          const key = `${item.id_eleve}-${item.absence_start_date || todayDate}`
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, {
+              id: item.absence_id || item.id,
+              nom: item.nom || 'غير معروف',
+              num: item.num || '-',
+              class_libelle: item.class_libelle || 'بدون قسم',
+              id_classe: item.id_class,
+              debut: item.absence_start_date || todayDate,
+              heure_deb: item.absence_start_time || '-',
+              fin: item.absence_end_date || '-',
+              heure_fin: item.absence_end_time || '-',
+              justified: item.justified || false,
+              present: item.present || false,
+              type: 'active',
+              id_eleve: item.id_eleve
+            })
+          }
+        })
       }
       
+      // Process absences that start OR end today
+      if (todayAbsencesResult.success && todayAbsencesResult.data) {
+        todayAbsencesResult.data.forEach(item => {
+          // Check if it starts today OR ends today
+          const startsToday = item.absence_start_date === todayDate
+          const endsToday = item.absence_end_date === todayDate
+          
+          // Only include if it starts or ends today
+          if (startsToday || endsToday) {
+            const key = `${item.id_eleve}-${item.absence_start_date || todayDate}`
+            if (!uniqueMap.has(key)) {
+              uniqueMap.set(key, {
+                id: item.id,
+                nom: item.student_name || 'غير معروف',
+                num: item.student_num || '-',
+                class_libelle: item.class_libelle || 'بدون قسم',
+                id_classe: item.id_class,
+                debut: item.absence_start_date,
+                heure_deb: item.absence_start_time || '-',
+                fin: item.absence_end_date,
+                heure_fin: item.absence_end_time || '-',
+                justified: item.justified || false,
+                present: item.present || false,
+                type: startsToday && endsToday ? 'start_and_end_today' : 
+                       startsToday ? 'start_today' : 'end_today',
+                id_eleve: item.id_eleve
+              })
+            }
+          }
+        })
+      }
+      
+      // Convert map to array
       let formattedData = Array.from(uniqueMap.values())
       
       // Filter by selected class
@@ -170,9 +174,7 @@ export default function ReportsPage() {
     try {
       setSanctionsLoading(true)
       
-      // Fetch all sanctions first
       const filters = {}
-      
       if (sanctionsSelectedClass !== 'all') {
         filters.classId = sanctionsSelectedClass
       }
@@ -240,14 +242,14 @@ export default function ReportsPage() {
   }, [activeReportTab, loadSanctionsData])
 
   const formatDateTime = (dateStr, timeStr) => {
-    if (!dateStr) return '-'
+    if (!dateStr || dateStr === '-') return '-'
     try {
       const date = new Date(dateStr)
       if (isNaN(date.getTime())) return '-'
       const day = String(date.getDate()).padStart(2, '0')
       const month = String(date.getMonth() + 1).padStart(2, '0')
       const year = date.getFullYear()
-      const time = timeStr || `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+      const time = timeStr && timeStr !== '-' ? timeStr : ''
       return `${day}/${month}/${year} ${time}`
     } catch {
       return '-'
@@ -302,6 +304,15 @@ export default function ReportsPage() {
       for (let i = 0; i < absents.length; i++) {
         const item = absents[i]
         const bgColor = i % 2 === 0 ? '#f5f5f5' : '#ffffff'
+        
+        // Determine status display
+        let statusDisplay = ''
+        if (item.fin && item.fin !== '-' && item.fin !== null) {
+          statusDisplay = item.justified ? 'مبرر' : 'غير مبرر'
+        } else {
+          statusDisplay = '--'
+        }
+        
         tableRows += `
           <tr style="background-color: ${bgColor};">
             <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${i + 1}</td>
@@ -309,8 +320,8 @@ export default function ReportsPage() {
             <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${(item.num || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
             <td style="padding: 10px; border: 1px solid #cccccc; text-align: right;">${(item.class_libelle || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
             <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${formatDateTime(item.debut, item.heure_deb)}</td>
-            <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${item.fin ? formatDateTime(item.fin, item.heure_fin) : 'مستمر'}</td>
-            <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${item.justified ? 'مبررة' : 'غير مبررة'}</td>
+            <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${item.fin && item.fin !== '-' ? formatDateTime(item.fin, item.heure_fin) : 'مستمر'}</td>
+            <td style="padding: 10px; border: 1px solid #cccccc; text-align: center;">${statusDisplay}</td>
           </tr>
         `
       }
@@ -369,7 +380,10 @@ export default function ReportsPage() {
           
           <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cccccc; text-align: center; font-size: 9pt; color: #7f8c8d;">
             <p>تم إنشاء هذا التقرير بواسطة نظام معهد عبدالحميد غزواني</p>
-            <p>* يشمل التقرير الغيابات التي بدأت أو انتهت اليوم</p>
+            <p>* يشمل التقرير:</p>
+            <p style="font-size: 8pt;">-   الطلاب الغائبون  </p>
+            <p style="font-size: 8pt;">- الطلاب الذين بدأ غيابهم اليوم </p>
+            <p style="font-size: 8pt;">- الطلاب الذين انتهى غيابهم اليوم</p>
           </div>
         </div>
       `
@@ -581,7 +595,7 @@ export default function ReportsPage() {
           <p className="text-gray-600">عرض وتصدير تقارير الغياب والعقوبات الخاصة باليوم الحالي</p>
           {userRole && (
             <div className="mt-2 inline-block px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
-              الدور: {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'}
+              الدور: {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'إداري' : 'أستاذ'}
             </div>
           )}
         </div>
@@ -660,7 +674,12 @@ export default function ReportsPage() {
                 </div>
               </div>
               <div className="mt-3 text-sm text-gray-500 bg-blue-50 p-2 rounded-lg">
-                📌 يشمل التقرير الغيابات التي بدأت أو انتهت اليوم ({formatDate(todayDate)})
+                📌 يشمل التقرير:
+                <ul className="list-disc list-inside mt-1 text-xs">
+                  <li>الطلاب الغائبون</li>
+                  <li>الطلاب الذين بدأ غيابهم اليوم ({formatDate(todayDate)})</li>
+                  <li>الطلاب الذين انتهى غيابهم اليوم ({formatDate(todayDate)})</li>
+                </ul>
               </div>
             </div>
 
@@ -701,27 +720,39 @@ export default function ReportsPage() {
                         </td>
                       </tr>
                     ) : (
-                      absents.map((item, index) => (
-                        <tr key={`${item.id}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nom}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center">{item.num}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{item.class_libelle}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center">
-                            {formatDateTime(item.debut, item.heure_deb)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center">
-                            {item.fin ? formatDateTime(item.fin, item.heure_fin) : 'مستمر'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            {item.justified ? (
-                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">مبررة</span>
-                            ) : (
-                              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">غير مبررة</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                      absents.map((item, index) => {
+                        // Determine status display
+                        let statusDisplay
+                        if (item.fin && item.fin !== '-' && item.fin !== null) {
+                          statusDisplay = item.justified ? (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">مبرر</span>
+                          ) : (
+                            <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">غير مبرر</span>
+                          )
+                        } else {
+                          statusDisplay = (
+                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">--</span>
+                          )
+                        }
+                        
+                        return (
+                          <tr key={`${item.id}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nom}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center">{item.num}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{item.class_libelle}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center">
+                              {formatDateTime(item.debut, item.heure_deb)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center">
+                              {item.fin && item.fin !== '-' ? formatDateTime(item.fin, item.heure_fin) : 'مستمر'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              {statusDisplay}
+                            </td>
+                          </tr>
+                        )
+                      })
                     )}
                   </tbody>
                 </table>
@@ -834,8 +865,8 @@ export default function ReportsPage() {
                             {item.endDate ? formatDate(item.endDate) : 
                               <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">مستمرة</span>
                             }
-                            </td>
-                          </tr>
+                          </td>
+                        </tr>
                       ))
                     )}
                   </tbody>

@@ -126,7 +126,7 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="mt-6 overflow-y-auto" style={{ height: 'calc(100% - 180px)' }}>
+        <nav className="mt-4 overflow-y-auto" style={{ height: 'calc(100% - 160px)' }}>
           {filteredMenuItems.map((item) => {
             const isActive = pathname === item.href
             return (
@@ -147,7 +147,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Bottom section - User Info & Logout */}
-        <div className="absolute bottom-0 w-full p-4 border-t border-blue-700 bg-gradient-to-b from-blue-900 to-blue-800">
+       <div className="absolute bottom-0 w-full p-2 border-t border-blue-700 bg-gradient-to-b from-blue-900 to-blue-800">
           {loading ? (
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'}`}>
               <div className="w-8 h-8 bg-blue-600 rounded-full animate-pulse"></div>
@@ -162,7 +162,7 @@ export default function Sidebar() {
             <div>
               <div 
                 onClick={handleProfileClick}
-                className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-3 cursor-pointer hover:bg-blue-800 rounded-lg p-2 transition-colors`}
+                className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-1 cursor-pointer hover:bg-blue-800 rounded-lg p-2 transition-colors`}
               >
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0">
                   <span className="text-lg">{getFullName().charAt(0) || '👤'}</span>

@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Plus, X, User, BookOpen, Calendar, Phone, Mail } from 'lucide-react'
 import { supabase } from '../lib/supabase/client'
+import AddStudentModal from './components/AddStudentModal'
 
 // Import server actions
 import { getStudents, getClasses, getStudentsCount, createStudent } from './actions/students'
@@ -32,19 +32,6 @@ export default function Dashboard() {
   
   // Modal states
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false)
-  const [addingStudent, setAddingStudent] = useState(false)
-  const [newStudent, setNewStudent] = useState({
-    num_eleve: '',
-    nom: '',
-    prenom: '',
-    date_naissance: '',
-    id_class: '',
-    pere: '',
-    mere: '',
-    phone: '',
-    email: '',
-    adresse: ''
-  })
 
   useEffect(() => {
     checkUserAndLoadData()
@@ -142,60 +129,9 @@ export default function Dashboard() {
     }
   }
 
-  const handleAddStudent = async (e) => {
-    e.preventDefault()
-    
-    // Check authentication again before submitting
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      toast.error('يرجى تسجيل الدخول أولاً')
-      router.push('/login')
-      return
-    }
-    
-    // Block users without CREATE_STUDENT privilege
-    if (!hasPrivilege(userRole, PRIVILEGES.CREATE_STUDENT)) {
-      toast.error('غير مصرح به - فقط المديرين والإداريين يمكنهم إضافة تلاميذ')
-      return
-    }
-    
-    // Validation
-    if (!newStudent.num_eleve || !newStudent.nom || !newStudent.prenom || !newStudent.id_class) {
-      toast.error('الرجاء تعبئة جميع الحقول المطلوبة')
-      return
-    }
-    
-    setAddingStudent(true)
-    
-    try {
-      const result = await createStudent(newStudent)
-      
-      if (result.success) {
-        toast.success('تم إضافة التلميذ بنجاح')
-        setIsAddStudentModalOpen(false)
-        setNewStudent({
-          num_eleve: '',
-          nom: '',
-          prenom: '',
-          date_naissance: '',
-          id_class: '',
-          pere: '',
-          mere: '',
-          phone: '',
-          email: '',
-          adresse: ''
-        })
-        // Refresh dashboard data
-        await loadDashboardData(userRole, userId)
-      } else {
-        toast.error(result.error || 'حدث خطأ في إضافة التلميذ')
-      }
-    } catch (error) {
-      console.error('Error adding student:', error)
-      toast.error('حدث خطأ في إضافة التلميذ')
-    } finally {
-      setAddingStudent(false)
-    }
+  const handleStudentAdded = async (newStudent) => {
+    // Refresh dashboard data after adding a student
+    await loadDashboardData(userRole, userId)
   }
 
   // Show loading while checking authentication
@@ -267,7 +203,7 @@ export default function Dashboard() {
   const getRoleDisplayName = (role) => {
     switch(role) {
       case ROLES.ADMIN: return 'مدير'
-      case ROLES.MANAGER: return 'مدير عام'
+      case ROLES.MANAGER: return 'إداري'
       case ROLES.TEACHER: return 'أستاذ'
       default: return 'مستخدم'
     }
@@ -328,10 +264,8 @@ export default function Dashboard() {
               <Link href="/classes" className="flex items-center justify-between w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-lg transition">
                 <span>📝 تسجيل حضور اليوم</span>
                 <span>←</span>
-              </Link>)
-           
-            
-            }
+              </Link>
+            )}
             
             {/* Add Student button - only if user has CREATE_STUDENT privilege */}
             {hasPrivilege(userRole, PRIVILEGES.CREATE_STUDENT) && (
@@ -398,7 +332,7 @@ export default function Dashboard() {
                     <th className="text-right py-3 px-4">القسم</th>
                     <th className="text-right py-3 px-4">وقت الغياب</th>
                     <th className="text-right py-3 px-4">الحالة</th>
-                   </tr>
+                  </tr>
                 </thead>
                 <tbody>
                   {recentAbsences.map((absence) => (
@@ -470,188 +404,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Add Student Modal - Only shown if user has CREATE_STUDENT privilege */}
-      {hasPrivilege(userRole, PRIVILEGES.CREATE_STUDENT) && isAddStudentModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-800">إضافة تلميذ جديد</h2>
-              <button
-                onClick={() => setIsAddStudentModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleAddStudent} className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <User size={16} className="inline ml-1" />
-                    رقم التسجيل *
-                  </label>
-                  <input
-                    type="text"
-                    value={newStudent.num_eleve}
-                    onChange={(e) => setNewStudent({...newStudent, num_eleve: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="مثال: 2024001"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <User size={16} className="inline ml-1" />
-                    الاسم *
-                  </label>
-                  <input
-                    type="text"
-                    value={newStudent.nom}
-                    onChange={(e) => setNewStudent({...newStudent, nom: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="الاسم"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    اللقب *
-                  </label>
-                  <input
-                    type="text"
-                    value={newStudent.prenom}
-                    onChange={(e) => setNewStudent({...newStudent, prenom: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="اللقب"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Calendar size={16} className="inline ml-1" />
-                    تاريخ الولادة
-                  </label>
-                  <input
-                    type="date"
-                    value={newStudent.date_naissance}
-                    onChange={(e) => setNewStudent({...newStudent, date_naissance: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <BookOpen size={16} className="inline ml-1" />
-                    القسم *
-                  </label>
-                  <select
-                    value={newStudent.id_class}
-                    onChange={(e) => setNewStudent({...newStudent, id_class: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">اختر القسم</option>
-                    {classes.map((cls) => (
-                      <option key={cls.id_class} value={cls.id_class}>
-                        {cls.libelle}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    اسم الأب
-                  </label>
-                  <input
-                    type="text"
-                    value={newStudent.pere}
-                    onChange={(e) => setNewStudent({...newStudent, pere: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="اسم الأب"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    اسم الأم
-                  </label>
-                  <input
-                    type="text"
-                    value={newStudent.mere}
-                    onChange={(e) => setNewStudent({...newStudent, mere: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="اسم الأم"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Phone size={16} className="inline ml-1" />
-                    رقم الهاتف
-                  </label>
-                  <input
-                    type="tel"
-                    value={newStudent.phone}
-                    onChange={(e) => setNewStudent({...newStudent, phone: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="رقم الهاتف"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Mail size={16} className="inline ml-1" />
-                    البريد الإلكتروني
-                  </label>
-                  <input
-                    type="email"
-                    value={newStudent.email}
-                    onChange={(e) => setNewStudent({...newStudent, email: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="البريد الإلكتروني"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    العنوان
-                  </label>
-                  <textarea
-                    value={newStudent.adresse}
-                    onChange={(e) => setNewStudent({...newStudent, adresse: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    rows="3"
-                    placeholder="العنوان الكامل"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end mt-6 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsAddStudentModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingStudent}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {addingStudent ? 'جاري الإضافة...' : 'إضافة'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Add Student Modal */}
+      {hasPrivilege(userRole, PRIVILEGES.CREATE_STUDENT) && (
+        <AddStudentModal
+          isOpen={isAddStudentModalOpen}
+          onClose={() => setIsAddStudentModalOpen(false)}
+          classes={classes}
+          onStudentAdded={handleStudentAdded}
+        />
       )}
     </div>
   )

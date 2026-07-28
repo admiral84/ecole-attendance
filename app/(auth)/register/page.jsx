@@ -19,7 +19,7 @@ export default function RegisterPage() {
     prenom: '',
     matricule: '',
     phone: '',
-    role: 'teacher' // role is always a string
+    role: 'teacher'
   })
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function RegisterPage() {
   async function handleRegister(e) {
     e.preventDefault()
 
-    // Validation remains the same
+    // Validation
     if (!formData.nom || !formData.prenom || !formData.matricule || !formData.email || !formData.password || !formData.phone) {
       toast.error('الرجاء تعبئة جميع الحقول')
       return
@@ -65,12 +65,12 @@ export default function RegisterPage() {
     }
 
     if (!validateMatricule(formData.matricule)) {
-      toast.error('المعرف غير صالح')
+      toast.error('المعرف غير صالح (4-15 حروف وأرقام فقط)')
       return
     }
 
     if (!validatePhone(formData.phone)) {
-      toast.error('رقم الهاتف غير صحيح')
+      toast.error('رقم الهاتف غير صحيح (8-10 أرقام)')
       return
     }
 
@@ -109,7 +109,7 @@ export default function RegisterPage() {
           .from('users')
           .insert([
             {
-              user_id: authData.user.id,  // This is now the primary key
+              user_id: authData.user.id,
               matricule: formData.matricule,
               nom: formData.nom,
               prenom: formData.prenom,
@@ -123,15 +123,19 @@ export default function RegisterPage() {
         if (insertError) {
           console.error('Error inserting user:', insertError)
           toast.error('تم إنشاء الحساب ولكن حدث خطأ في حفظ البيانات')
-        } else {
-          toast.success('تم إنشاء الحساب بنجاح!')
-          
-          // Redirect to login page after successful registration
-          toast.success('تحقق من بريدك الإلكتروني للتأكيد')
-          setTimeout(() => {
-            router.push('/login')
-          }, 2000)
+          setLoading(false)
+          return
         }
+
+        // Sign out immediately to prevent auto-login
+        await supabase.auth.signOut()
+        
+        toast.success('تم إنشاء الحساب بنجاح! في انتظار موافقة الإدارة')
+        
+        // Redirect to login page after 2 seconds
+        setTimeout(() => {
+          router.push('/login')
+        }, 2000)
       }
 
     } catch (err) {
@@ -152,7 +156,7 @@ export default function RegisterPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold">إنشاء حساب جديد</h1>
           <p className="text-sm text-gray-600 mt-2">
-            ستحتاج لتأكيد بريدك الإلكتروني بعد التسجيل
+            ستحتاج إلى موافقة الإدارة بعد التسجيل
           </p>
         </div>
 
@@ -233,8 +237,7 @@ export default function RegisterPage() {
             className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="teacher">👨‍🏫 أستاذ</option>
-            <option value="admin">👨‍💼 مدير</option>
-            <option value="parent">👨‍👩‍👧 ولي أمر</option>
+            <option value="admin">👨‍💼 إداري</option>
           </select>
 
           <button 

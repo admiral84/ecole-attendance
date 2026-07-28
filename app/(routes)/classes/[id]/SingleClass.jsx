@@ -1,19 +1,88 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { markStudentAbsent, markStudentPresent } from '../../../actions/absence'
+import { markStudentAbsent, markStudentPresent, checkNotificationsExist, deleteNotification } from '../../../actions/absence'
 
 export default function SingleClass({ classInfo, students, stats, userRole, userInfo }) {
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [updating, setUpdating] = useState(false)
   const [updatingStudentId, setUpdatingStudentId] = useState(null)
+  const [notificationMap, setNotificationMap] = useState({})
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
 
   // ✅ Check if user can modify (only teachers)
   const canModify = userRole === 'teacher'
+
+  // Refresh data function
+  const refreshData = () => {
+    router.refresh()
+  }
+
+  // Fetch notification status for all students
+  useEffect(() => {
+    const fetchNotificationStatus = async () => {
+      if (!students || students.length === 0) {
+        setLoadingNotifications(false)
+        return
+      }
+
+      try {
+        // Get students who are currently absent
+        const absentStudents = students.filter(s => s.hasActiveAbsence === true)
+        
+        if (absentStudents.length === 0) {
+          setNotificationMap({})
+          setLoadingNotifications(false)
+          return
+        }
+
+        // Prepare arrays for batch check
+        const studentIds = absentStudents.map(s => s.id_eleve)
+        const absenceDates = absentStudents.map(s => s.absenceStartDate || new Date().toISOString().split('T')[0])
+
+        // Check notifications for all absent students
+        const result = await checkNotificationsExist(
+          classInfo.id_class,
+          studentIds,
+          absenceDates
+        )
+
+        if (result.success) {
+          setNotificationMap(result.data)
+        } else {
+          console.error('Error fetching notifications:', result.error)
+          setNotificationMap({})
+        }
+      } catch (error) {
+        console.error('Error in fetchNotificationStatus:', error)
+        setNotificationMap({})
+      } finally {
+        setLoadingNotifications(false)
+      }
+    }
+
+    fetchNotificationStatus()
+  }, [students, classInfo.id_class])
+
+  // Delete notification handler
+  const handleDeleteNotification = async (studentId) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الإشعار؟')) {
+      return
+    }
+    
+    const result = await deleteNotification(studentId)
+    
+    if (result.success) {
+      toast.success('تم حذف الإشعار بنجاح')
+      refreshData()
+    } else {
+      toast.error(result.error || 'فشل في حذف الإشعار')
+    }
+  }
 
   async function handleMarkAbsent(studentId, studentName) {
     if (!canModify) {
@@ -39,7 +108,7 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
       
       if (result.success) {
         toast.success(`تم تسجيل غياب ${studentName} بنجاح`)
-        router.refresh()
+        refreshData()
       } else {
         toast.error(result.error || 'خطأ في تسجيل الغياب')
       }
@@ -77,7 +146,9 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
       
       if (result.success) {
         toast.success(`تم تسجيل عودة ${studentName} بنجاح`)
-        router.refresh()
+        // Delete the notification after student returns
+        await handleDeleteNotification(studentId)
+        refreshData()
       } else {
         toast.error(result.error || 'خطأ في تسجيل العودة')
       }
@@ -99,10 +170,17 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
   const getRoleLabel = (role) => {
     switch(role) {
       case 'admin': return 'مدير'
-      case 'manager': return 'مدير عام'
+      case 'manager': return 'إداري'
       case 'teacher': return 'أستاذ'
       default: return 'مستخدم'
     }
+  }
+
+  // Check if student has a notification
+  const hasNotification = (studentId, absenceDate) => {
+    if (!absenceDate) return false
+    const key = `${studentId}-${absenceDate}`
+    return !!notificationMap[key]
   }
 
   return (
@@ -191,13 +269,21 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">اسم الأب</th>
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">رقم الهاتف</th>
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">الحالة</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">حالة الإشعار</th>
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">الإجراءات</th>
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.length === 0 ? (
+              {loadingNotifications ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-500">
+                  <td colSpan={7} className="text-center py-12 text-gray-500">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
+                    <p>جاري تحميل حالة الإشعارات...</p>
+                  </td>
+                </tr>
+              ) : filteredStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-gray-500">
                     <div className="text-4xl mb-2">📭</div>
                     <p>لا يوجد تلاميذ في هذا القسم</p>
                     {canModify && (
@@ -205,13 +291,15 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
                         إضافة تلميذ جديد
                       </Link>
                     )}
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ) : (
                 filteredStudents.map((student) => {
                   const isAbsent = student.hasActiveAbsence === true
                   const isUpdating = updating && updatingStudentId === student.id_eleve
-                  
+                  const hasNotif = hasNotification(student.id_eleve, student.absenceStartDate)
+                  const canReturn = isAbsent && hasNotif && canModify
+
                   return (
                     <tr key={student.id_eleve} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4 font-mono text-sm">{student.id_eleve}</td>
@@ -238,7 +326,24 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex gap-2">
+                        {isAbsent ? (
+                          hasNotif ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                              <span className="w-1.5 h-1.5 bg-green-600 rounded-full inline-block"></span>
+                              تم الإشعار
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                              <span className="w-1.5 h-1.5 bg-yellow-600 rounded-full inline-block animate-pulse"></span>
+                              ينتظر الإشعار
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-gray-400 text-sm">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2 flex-wrap">
                           {canModify && (
                             <>
                               {!isAbsent ? (
@@ -257,8 +362,13 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
                                     student.absenceStartDate,
                                     student.absenceStartTime
                                   )}
-                                  disabled={isUpdating}
-                                  className="px-3 py-1 rounded text-xs font-medium transition bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                                  disabled={!canReturn || isUpdating}
+                                  className={`px-3 py-1 rounded text-xs font-medium transition ${
+                                    canReturn
+                                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  } disabled:opacity-50`}
+                                  title={!hasNotif ? 'يجب إرسال إشعار أولاً لتسجيل العودة' : ''}
                                 >
                                   {isUpdating ? 'جاري...' : 'حضور'}
                                 </button>
@@ -279,46 +389,9 @@ export default function SingleClass({ classInfo, students, stats, userRole, user
                 })
               )}
             </tbody>
-           </table>
+          </table>
         </div>
       </div>
-
-      {/* Export Button */}
-      {students.length > 0 && (
-        <div className="mt-6 flex justify-end">
-          <button
-            onClick={() => {
-              const csvData = filteredStudents.map(student => ({
-                المعرف: student.id_eleve,
-                الاسم: student.nom,
-                'اسم الأب': student.pere || '',
-                'رقم الهاتف': student.parentphone || '',
-                الحالة: student.hasActiveAbsence ? 'غائب' : 'حاضر'
-              }))
-              
-              const headers = Object.keys(csvData[0])
-              const csvRows = [
-                headers.join(','),
-                ...csvData.map(row => headers.map(header => `"${row[header]}"`).join(','))
-              ]
-              
-              const csv = csvRows.join('\n')
-              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = `${classInfo.id_class}_students.csv`
-              a.click()
-              URL.revokeObjectURL(url)
-              
-              toast.success('تم تصدير الملف بنجاح')
-            }}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm sm:text-base"
-          >
-            📥 تصدير إلى CSV
-          </button>
-        </div>
-      )}
     </div>
   )
 }

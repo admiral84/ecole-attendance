@@ -208,7 +208,7 @@ export default function ClassClient({ initialClasses, userRole }) {
             userRole === 'manager' ? 'bg-yellow-100 text-yellow-700' :
             'bg-blue-100 text-blue-700'
           }`}>
-            {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'مدير عام' : 'أستاذ'}
+            {userRole === 'admin' ? 'مدير' : userRole === 'manager' ? 'إداري' : 'أستاذ'}
           </span>
         </div>
         {canModify && (
