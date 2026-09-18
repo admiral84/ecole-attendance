@@ -228,33 +228,14 @@ export default function AttendanceClient() {
   }
 
 const handleMarkReturned = async (studentId, classId, absenceStartDate, absenceStartTime, justified) => {
-  console.log('\n========== HANDLE MARK RETURNED ==========')
-  console.log('📥 Received parameters:')
-  console.log('  ├─ studentId:', studentId)
-  console.log('  ├─ classId:', classId)
-  console.log('  ├─ absenceStartDate:', absenceStartDate)
-  console.log('  ├─ absenceStartTime:', absenceStartTime)
-  console.log('  └─ justified:', justified)
+  
   
   const endDate = new Date().toISOString().split('T')[0]
   const endTime = new Date().toTimeString().slice(0, 5)
   const startDate = absenceStartDate || endDate
   const startTime = absenceStartTime || '08:00'
   
-  console.log('\n📅 Calculated dates:')
-  console.log('  ├─ startDate:', startDate)
-  console.log('  ├─ startTime:', startTime)
-  console.log('  ├─ endDate:', endDate)
-  console.log('  └─ endTime:', endTime)
   
-  console.log('\n📤 Calling markStudentPresent with:')
-  console.log('  ├─ studentId:', studentId)
-  console.log('  ├─ classId:', classId)
-  console.log('  ├─ startDate:', startDate)
-  console.log('  ├─ startTime:', startTime)
-  console.log('  ├─ endDate:', endDate)
-  console.log('  ├─ endTime:', endTime)
-  console.log('  └─ justified:', justified)
   
   const result = await markStudentPresent(studentId, classId, startDate, startTime, endDate, endTime, justified)
   

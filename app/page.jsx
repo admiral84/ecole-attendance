@@ -49,7 +49,7 @@ export default function Dashboard() {
       }
       
       if (!session) {
-        console.log('No session found, redirecting to login')
+        
         router.push('/login')
         return
       }

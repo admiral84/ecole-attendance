@@ -102,123 +102,198 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop Sidebar - on the RIGHT side for Arabic */}
-      <aside 
-        className={`hidden md:block fixed right-0 top-0 h-full bg-gradient-to-b from-blue-900 to-blue-800 text-white transition-all duration-300 z-20 ${
-          isCollapsed ? 'w-20' : 'w-64'
+<aside
+  className={`hidden md:flex fixed right-0 top-0 h-screen flex-col
+    bg-gradient-to-b from-blue-900 to-blue-800 text-white
+    transition-all duration-300 z-20
+    ${isCollapsed ? 'w-20' : 'w-64'}`}
+>
+  {/* ==================== HEADER ==================== */}
+  <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-blue-700">
+    {!isCollapsed && (
+      <div className="flex items-center space-x-2 space-x-reverse min-w-0">
+        <span className="text-2xl flex-shrink-0">🏫</span>
+
+        <span className="font-bold text-lg truncate">
+          معهد عبدالحميد غزواني
+        </span>
+      </div>
+    )}
+
+    {isCollapsed && (
+      <span className="text-2xl mx-auto">
+        🏫
+      </span>
+    )}
+
+    <button
+      onClick={() => setIsCollapsed(!isCollapsed)}
+      className="text-white hover:text-blue-200 transition-colors flex-shrink-0"
+      aria-label={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
+    >
+      {isCollapsed ? '←' : '→'}
+    </button>
+  </div>
+
+  {/* ==================== NAVIGATION ==================== */}
+  <nav className="flex-1 min-h-0 overflow-y-auto py-4">
+    <div className="space-y-1">
+      {filteredMenuItems.map((item) => {
+        const isActive = pathname === item.href
+
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            className={`flex items-center space-x-3 space-x-reverse
+              px-4 py-3 mx-2 rounded-lg
+              transition-all duration-200
+              ${
+                isActive
+                  ? 'bg-blue-700 text-white shadow-lg'
+                  : 'text-blue-100 hover:bg-blue-800 hover:text-white'
+              }
+              ${isCollapsed ? 'justify-center' : ''}`}
+          >
+            <span className="text-xl flex-shrink-0">
+              {item.icon}
+            </span>
+
+            {!isCollapsed && (
+              <span className="font-medium truncate">
+                {item.name}
+              </span>
+            )}
+          </Link>
+        )
+      })}
+    </div>
+  </nav>
+
+  {/* ==================== PROFILE / LOGOUT ==================== */}
+  <div className="flex-shrink-0 border-t border-blue-700 bg-gradient-to-b from-blue-900 to-blue-800 p-2">
+    {loading ? (
+      <div
+        className={`flex items-center ${
+          isCollapsed
+            ? 'justify-center'
+            : 'space-x-3 space-x-reverse'
         }`}
       >
-        {/* Logo */}
-        <div className="flex items-center justify-between p-4 border-b border-blue-700">
+        <div className="w-8 h-8 bg-blue-600 rounded-full animate-pulse flex-shrink-0" />
+
+        {!isCollapsed && (
+          <div className="flex-1 min-w-0">
+            <div className="h-4 bg-blue-700 rounded animate-pulse w-24 mb-2" />
+            <div className="h-3 bg-blue-700 rounded animate-pulse w-32" />
+          </div>
+        )}
+      </div>
+    ) : user ? (
+      <div>
+        {/* Profile */}
+        <div
+          onClick={handleProfileClick}
+          className={`flex items-center ${
+            isCollapsed
+              ? 'justify-center'
+              : 'space-x-3 space-x-reverse'
+          }
+          cursor-pointer hover:bg-blue-800 rounded-lg p-2
+          transition-colors mb-1`}
+        >
+          {/* Avatar */}
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0">
+            <span className="text-lg">
+              {getFullName().charAt(0) || '👤'}
+            </span>
+          </div>
+
+          {/* User information */}
           {!isCollapsed && (
-            <div className="flex items-center space-x-2 space-x-reverse">
-              <span className="text-2xl">🏫</span>
-              <span className="font-bold text-lg">معهد عبدالحميد غزواني</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                {getFullName()}
+              </p>
+
+              <p className="text-xs text-blue-200 truncate">
+                {userData?.email || user?.email}
+              </p>
+
+              {userData?.role && (
+                <p className="text-xs text-blue-300 mt-1 truncate">
+                  {getRoleLabel(userData.role)}
+                </p>
+              )}
             </div>
           )}
-          {isCollapsed && <span className="text-2xl mx-auto">🏫</span>}
-          
+        </div>
+
+        {/* Logout */}
+        {!isCollapsed ? (
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="text-white hover:text-blue-200 transition-colors"
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2
+              px-3 py-2
+              bg-red-600 hover:bg-red-700
+              rounded-lg
+              transition-all duration-200
+              text-sm font-medium"
           >
-            {isCollapsed ? '←' : '→'}
+            <span>🚪</span>
+            <span>تسجيل الخروج</span>
           </button>
+        ) : (
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center
+              px-3 py-2
+              bg-red-600 hover:bg-red-700
+              rounded-lg
+              transition-all duration-200"
+            title="تسجيل الخروج"
+          >
+            <span>🚪</span>
+          </button>
+        )}
+      </div>
+    ) : (
+      /* Guest */
+      <div
+        className={`flex items-center ${
+          isCollapsed
+            ? 'justify-center'
+            : 'space-x-3 space-x-reverse'
+        }`}
+      >
+        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+          👤
         </div>
 
-        {/* Navigation */}
-        <nav className="mt-4 overflow-y-auto" style={{ height: 'calc(100% - 160px)' }}>
-          {filteredMenuItems.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center space-x-3 px-4 py-3 mx-2 rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-blue-700 text-white shadow-lg'
-                    : 'text-blue-100 hover:bg-blue-800 hover:text-white'
-                } ${isCollapsed ? 'justify-center' : ''}`}
-              >
-                <span className="text-xl">{item.icon}</span>
-                {!isCollapsed && <span className="font-medium">{item.name}</span>}
-              </Link>
-            )
-          })}
-        </nav>
+        {!isCollapsed && (
+          <>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">
+                زائر
+              </p>
 
-        {/* Bottom section - User Info & Logout */}
-       <div className="absolute bottom-0 w-full p-2 border-t border-blue-700 bg-gradient-to-b from-blue-900 to-blue-800">
-          {loading ? (
-            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'}`}>
-              <div className="w-8 h-8 bg-blue-600 rounded-full animate-pulse"></div>
-              {!isCollapsed && (
-                <div className="flex-1">
-                  <div className="h-4 bg-blue-700 rounded animate-pulse w-24 mb-2"></div>
-                  <div className="h-3 bg-blue-700 rounded animate-pulse w-32"></div>
-                </div>
-              )}
+              <p className="text-xs text-blue-200 truncate">
+                غير مسجل الدخول
+              </p>
             </div>
-          ) : user ? (
-            <div>
-              <div 
-                onClick={handleProfileClick}
-                className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-1 cursor-pointer hover:bg-blue-800 rounded-lg p-2 transition-colors`}
-              >
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0">
-                  <span className="text-lg">{getFullName().charAt(0) || '👤'}</span>
-                </div>
-                {!isCollapsed && (
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{getFullName()}</p>
-                    <p className="text-xs text-blue-200 truncate">{userData?.email || user?.email}</p>
-                    {userData?.role && (
-                      <p className="text-xs text-blue-300 mt-1">{getRoleLabel(userData.role)}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              {!isCollapsed && (
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 text-sm font-medium"
-                >
-                  <span>🚪</span>
-                  <span>تسجيل الخروج</span>
-                </button>
-              )}
-              {isCollapsed && (
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200"
-                  title="تسجيل الخروج"
-                >
-                  <span>🚪</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'}`}>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                👤
-              </div>
-              {!isCollapsed && (
-                <>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">زائر</p>
-                    <p className="text-xs text-blue-200 truncate">غير مسجل الدخول</p>
-                  </div>
-                  <Link
-                    href="/login"
-                    className="text-blue-200 hover:text-white flex-shrink-0"
-                  >
-                    🔑
-                  </Link>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
+
+            <Link
+              href="/login"
+              className="text-blue-200 hover:text-white flex-shrink-0"
+            >
+              🔑
+            </Link>
+          </>
+        )}
+      </div>
+    )}
+  </div>
+</aside>
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 z-20">

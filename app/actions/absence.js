@@ -381,7 +381,7 @@ export async function markStudentPresent(studentId, classId, startDate, startTim
       .eq('date_deb', startDate)
       .eq('heure_deb', startTime)
       .is('date_fin', null)
-    console.log("la justification de billet ",justified);
+    
     if (updateError) {
       return { success: false, error: updateError.message }
     }
@@ -503,14 +503,7 @@ export async function sendAbsenceNotification(student_id, class_id, startDate, s
     const userData = await getUserRole(supabase, user.id)
     
     try {
-      console.log("📝 sendAbsenceNotification was called with:", {
-        student_id,
-        class_id,
-        startDate,
-        startTime,
-        isJustified,
-        teacher_matricule: user.id
-      });
+   
       
       // Format the date correctly for PostgreSQL DATE type (YYYY-MM-DD)
       let formattedDate = null;
@@ -518,7 +511,7 @@ export async function sendAbsenceNotification(student_id, class_id, startDate, s
         // If startDate is a time string (contains ':'), use today's date
         if (typeof startDate === 'string' && startDate.includes(':')) {
           formattedDate = new Date().toISOString().split('T')[0];
-          console.log('⚠️ startDate was a time string, using today\'s date instead:', formattedDate);
+          
         } else {
           // Try to format the date
           formattedDate = formatDateForPostgres(startDate);
@@ -534,7 +527,7 @@ export async function sendAbsenceNotification(student_id, class_id, startDate, s
         // If startTime is a boolean, use default time
         if (typeof startTime === 'boolean') {
           formattedTime = '08:00:00';
-          console.log('⚠️ startTime was boolean, using default time: 08:00:00');
+         
         } else {
           formattedTime = formatTimeForPostgres(startTime);
         }
@@ -542,15 +535,7 @@ export async function sendAbsenceNotification(student_id, class_id, startDate, s
         formattedTime = '08:00:00';
       }
       
-      console.log("📊 Formatted data for insert:", {
-        student_id,
-        class_id,
-        absence_date: formattedDate,
-        absence_time: formattedTime,
-        is_justified: isJustified,
-        status: 'pending',
-        teacher_matricule: user.id
-      });
+     
       
       const { data, error } = await supabase
         .from('absence_notifications')
