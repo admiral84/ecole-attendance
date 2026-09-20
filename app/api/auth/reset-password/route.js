@@ -18,8 +18,8 @@ export async function POST(request) {
     const formattedEmail = email.trim().toLowerCase()
     
     // Use correct environment variable names
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    const supabaseUrl = process.env.SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY
     
     
     
@@ -34,7 +34,7 @@ export async function POST(request) {
     // Create Supabase client with publishable key
     const supabase = createClient(supabaseUrl, supabaseKey)
     
-    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const origin = request.headers.get('origin') || process.env.APP_URL || 'http://localhost:3000'
     
     
     // Send password reset email
