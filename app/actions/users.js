@@ -622,10 +622,10 @@ export async function checkEmailExists(email) {
 // Simple check that doesn't fail - Super simple version
 export async function isUserApproved(email) {
   try {
-    console.log('isUserApproved called for:', email)
+    
     
     if (!email || email.trim() === '') {
-      console.log('No email provided, defaulting to approved')
+     
       return true
     }
     
@@ -639,7 +639,7 @@ export async function isUserApproved(email) {
       .eq('email', formattedEmail)
       .maybeSingle()
     
-    console.log('isUserApproved query result:', { data, error })
+    
     
     if (error) {
       console.error('Error checking approval:', error.message)
@@ -647,12 +647,12 @@ export async function isUserApproved(email) {
     }
     
     if (!data) {
-      console.log('User not found in users table, defaulting to approved')
+      
       return true
     }
     
     const isApproved = data.approved === true
-    console.log('User approved status:', isApproved)
+    
     return isApproved
     
   } catch (error) {

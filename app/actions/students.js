@@ -167,7 +167,7 @@ export async function getStudentsByClass(classId) {
         return { success: false, error: 'غير مصرح به - أنت غير مسؤول عن هذا القسم', data: [] }
       }
       
-      console.log(`Teacher has ${seances.length} seance(s) for class ${classId}`)
+      
     }
     
     const { data: students, error: studentsError } = await supabase

@@ -59,12 +59,11 @@ export default function Billet({
       if (!classLibelle) return
       
       setLoading(true)
-      console.log('\n========== STARTING LOADING PROCESS ==========')
-      console.log('📋 Class Name:', classLibelle)
+      
       
       try {
         // Step 1: Get class ID by libelle using server action
-        console.log('\n🔍 Getting class ID for libelle:', classLibelle)
+        
         const classesResult = await getAllClasses()
         
         if (!classesResult.success) {
@@ -81,29 +80,27 @@ export default function Billet({
           return
         }
         
-        console.log('✅ Found class:', { id_class: foundClass.id_class, libelle: foundClass.libelle })
+        
         setClassId(foundClass.id_class)
         
         // Step 2: Get teachers for this class using server action
-        console.log('\n🔍 Getting teachers for class ID:', foundClass.id_class)
+        
         const teacherSeanceResult = await getTeacherSeance(foundClass.id_class)
-        console.log('📊 getTeacherSeance Response:', teacherSeanceResult)
+        
         
         if (teacherSeanceResult.success) {
           const teacherIds = teacherSeanceResult.data
-          console.log('\n👨‍🏫 TEACHER IDS FOUND:')
-          console.log('  ├─ Total teacher IDs:', teacherIds.length)
-          console.log('  └─ Teacher IDs:', teacherIds)
+          
           
           if (teacherIds.length === 1) {
             // Single teacher - auto select
             const teacherId = teacherIds[0]
-            console.log('\n✅ Single teacher found - user_id:', teacherId)
+            
             setTeacher({ id: teacherId, name: `أستاذ ${teacherId}` })
             setNeedsSelection(false)
           } else if (teacherIds.length > 1) {
             // Multiple teachers - show selection
-            console.log('\n⚠️ Multiple teachers found - user_ids:', teacherIds)
+            
             const teachersList = teacherIds.map(id => ({ 
               id, 
               name: `أستاذ ${id}` 
@@ -113,7 +110,7 @@ export default function Billet({
             setSelectedTeacherId('')
           } else {
             // No teachers found
-            console.log('\n❌ No teachers found for this class')
+           
             setTeacher(null)
             setNeedsSelection(false)
             setAllTeachers([])
@@ -133,7 +130,7 @@ export default function Billet({
         setLoading(false)
       }
       
-      console.log('\n========== LOADING COMPLETE ==========\n')
+      
     }
     
     loadClassAndTeachers()
@@ -144,52 +141,13 @@ export default function Billet({
     if (!loading && classId && student) {
       const teacherId = teacher?.id || selectedTeacherId || 'غير محدد'
       const teacherName = teacher?.name || allTeachers.find(t => t.id === selectedTeacherId)?.name || 'غير محدد'
+     
       
-      console.log('\n╔════════════════════════════════════════════════════════════════╗')
-      console.log('║              📋 BILLET COMPONENT INFORMATION                    ║')
-      console.log('╚════════════════════════════════════════════════════════════════╝')
+    
       
-      console.log('\n📚 STUDENT INFORMATION:')
-      console.log('  ├─ student_id (UUID):', student.student_id)
-      console.log('  ├─ num (Student Number):', student.num)
-      console.log('  ├─ nom (Name):', student.nom || student.student_name)
-      console.log('  └─ is_returned:', student.is_returned || false)
+     
       
-      console.log('\n🏫 CLASS INFORMATION:')
-      console.log('  ├─ id_class (Class ID):', classId)
-      console.log('  ├─ libelle (Class Name):', classLibelle)
-      
-      console.log('\n📅 ABSENCE INFORMATION:')
-      console.log('  ├─ absence_start_date:', student.absence_start_date)
-      console.log('  ├─ absence_start_time:', student.absence_start_time)
-      console.log('  ├─ absence_end_date:', student.absence_end_date || 'غير محدد')
-      console.log('  ├─ absence_end_time:', student.absence_end_time || 'غير محدد')
-      console.log('  └─ is_returned:', student.is_returned ? 'نعم' : 'لا')
-      
-      console.log('\n👤 REQUESTER INFORMATION:')
-      console.log('  ├─ requested_by (User ID):', userId)
-      console.log('  ├─ requested_by_name:', currentUserName || 'الإدارة')
-      
-      console.log('\n⏰ CURRENT TIME (REQUEST TIME):')
-      console.log('  ├─ Date (Arabic):', currentDateTime.date)
-      console.log('  ├─ Time (Arabic):', currentDateTime.time)
-      
-      console.log('\n👨‍🏫 TEACHER INFORMATION:')
-      console.log('  ├─ teacher_id (user_id):', teacherId)
-      console.log('  ├─ teacher_name:', teacherName)
-      console.log('  ├─ teacher_found_automatically:', teacher ? 'نعم' : 'لا')
-      console.log('  ├─ needs_manual_selection:', needsSelection ? 'نعم' : 'لا')
-      console.log('  └─ all_teachers:', allTeachers.map(t => `${t.name} (${t.id})`).join(', '))
-      
-      console.log('\n⚙️ UI STATE:')
-      console.log('  ├─ isJustified (غياب مبرر):', isJustified ? 'نعم' : 'لا')
-      console.log('  ├─ canSubmit (يمكن الإرسال):', !!(teacher || (needsSelection && selectedTeacherId)) ? 'نعم' : 'لا')
-      console.log('  ├─ loading:', loading ? 'نعم' : 'لا')
-      console.log('  └─ selectedTeacherId:', selectedTeacherId || 'غير محدد')
-      
-      console.log('\n╔════════════════════════════════════════════════════════════════╗')
-      console.log('║                    END OF BILLET INFO                          ║')
-      console.log('╚════════════════════════════════════════════════════════════════╝\n')
+   
     }
   }, [loading, classId, student, teacher, needsSelection, selectedTeacherId, userId, currentUserName, currentDateTime, classLibelle, isJustified, allTeachers])
 
@@ -203,37 +161,11 @@ export default function Billet({
     
     setSending(true)
     
-    console.log('\n╔════════════════════════════════════════════════════════════════╗')
-    console.log('║              📤 SENDING PUSH NOTIFICATION                        ║')
-    console.log('╚════════════════════════════════════════════════════════════════╝')
     
-    console.log('\n📚 STUDENT INFO:')
-    console.log('  ├─ student_id:', student.student_id)
-    console.log('  ├─ num:', student.num)
-    console.log('  ├─ name:', student.nom || student.student_name)
     
-    console.log('\n🏫 CLASS INFO:')
-    console.log('  ├─ id_class:', classId)
-    console.log('  ├─ libelle:', classLibelle)
+  
     
-    console.log('\n📅 ABSENCE INFO:')
-    console.log('  ├─ start_date:', student.absence_start_date)
-    console.log('  ├─ start_time:', student.absence_start_time)
-    console.log('  ├─ isJustified:', isJustified ? 'نعم' : 'لا')
     
-    console.log('\n👤 REQUESTER INFO:')
-    console.log('  ├─ requested_by (user_id):', userId)
-    console.log('  ├─ requested_by_name:', currentUserName || 'الإدارة')
-    
-    console.log('\n⏰ REQUEST TIME:')
-    console.log('  ├─ date:', currentDateTime.date)
-    console.log('  ├─ time:', currentDateTime.time)
-    
-    console.log('\n👨‍🏫 TEACHER INFO:')
-    console.log('  ├─ teacher_id (user_id):', teacherId)
-    console.log('  ├─ teacher_type:', teacher ? 'Auto-detected' : 'Manually selected')
-    
-    console.log('\n📱 Sending push notification to teacher...')
     
     try {
       // Create FormData for server action
@@ -266,18 +198,13 @@ export default function Billet({
   isJustified                                           // isJustified (BOOLEAN)
 )
 
-        console.log('\n✅ Push notification sent successfully to teacher')
-        console.log('╔════════════════════════════════════════════════════════════════╗')
-        console.log('║                    NOTIFICATION SENT                           ║')
-        console.log('╚════════════════════════════════════════════════════════════════╝\n')
+   
         alert('✅ تم إرسال الإشعار للأستاذ بنجاح')
         if (onClose) onClose()
         if (onSuccess) onSuccess()
       } else {
         console.error('\n❌ Push notification failed:', result.error)
-        console.log('\n╔════════════════════════════════════════════════════════════════╗')
-        console.log('║                    NOTIFICATION FAILED                         ║')
-        console.log('╚════════════════════════════════════════════════════════════════╝\n')
+       
         alert(`❌ فشل إرسال الإشعار: ${result.error}`)
       }
     } catch (error) {
@@ -349,7 +276,7 @@ export default function Billet({
                 <select
                   value={selectedTeacherId}
                   onChange={(e) => {
-                    console.log('📝 Teacher selected manually - user_id:', e.target.value)
+                    
                     setSelectedTeacherId(e.target.value)
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-right"
@@ -382,7 +309,7 @@ export default function Billet({
                   type="checkbox"
                   checked={isJustified}
                   onChange={(e) => {
-                    console.log('📝 Justified absence toggled:', e.target.checked ? 'نعم' : 'لا')
+                   
                     setIsJustified(e.target.checked)
                   }}
                   className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
