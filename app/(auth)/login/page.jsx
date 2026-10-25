@@ -114,7 +114,7 @@ export default function LoginPage() {
       }
 
       toast.success(`مرحباً ${user.nom || ""} ${user.prenom || ""}`.trim());
-      router.replace("/");
+     
       router.refresh();
     } catch {
       setError("حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى");

@@ -4,6 +4,7 @@
 import { sendPushNotificationToTeacher } from "./notifications";
 
 export async function submitEntryRequest(formData) {
+
   try {
     // Extract data from formData
     const studentId = formData.get("studentId");

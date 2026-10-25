@@ -246,31 +246,48 @@ export async function getStudentById(studentId) {
 }
 
 // Delete student (admin/manager only)
+
 export async function deleteStudent(id) {
   try {
-    const supabase = await createClient()
-    const user = await requireUser(supabase)
-    await requireAdminOrManager(supabase, user)
-    
-    if (!id) throw new Error('معرف التلميذ مطلوب')
-    
-    const { error } = await supabase
-      .from('eleve')
-      .delete()
-      .eq('id_eleve', id)
-    
-    if (error) throw new Error(error.message)
-    
-    revalidatePath('/dashboard')
-    revalidatePath('/students')
-    
-    return { success: true }
-    
+    const supabase = await createClient();
+
+    const user = await requireUser(supabase);
+    await requireAdminOrManager(supabase, user);
+
+    if (!id) {
+      throw new Error('معرف التلميذ مطلوب');
+    }
+
+ const { error } = await supabase.rpc(
+  'archive_and_delete_student',
+  { p_id_eleve: id }
+);
+
+if (error) {
+  console.error('Archive and delete failed:', error);
+  throw new Error(error.message);
+}
+
+console.log('Student archived and deleted successfully:', id);
+
+    if (error) throw new Error(error.message);
+
+    revalidatePath('/dashboard');
+    revalidatePath('/students');
+
+    return { success: true };
   } catch (error) {
-    console.error('Error in deleteStudent:', error)
-    return { success: false, error: error.message }
+    console.error('Error in deleteStudent:', error);
+
+    return {
+      success: false,
+      error: error instanceof Error
+        ? error.message
+        : 'حدث خطأ أثناء حذف التلميذ',
+    };
   }
 }
+
 
 // Update student (admin/manager only)
 export async function updateStudent(studentData) {

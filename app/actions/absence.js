@@ -567,7 +567,7 @@ export async function sendAbsenceNotification(
         absence_time: formattedTime,
         is_justified: isJustified,
         status: "pending",
-        teacher_matricule: user.id,
+        
       });
     } catch {
       // Notification insert failed silently — the caller should not be blocked.

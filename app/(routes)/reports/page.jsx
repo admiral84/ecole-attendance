@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { getAllClasses } from '../../actions/classes'
-import { getStudentsWithPresentFalse, getAbsentStudentsByDateRange } from '../../actions/absence'
+import {
+  getAbsentStudentsByDateRange
+} from '../../actions/absence'
 import { getSanctions } from '../../actions/sanctions'
 import { getCurrentUser } from '../../actions/users'
 import { toast } from 'sonner'
@@ -71,103 +73,90 @@ export default function ReportsPage() {
   }, [])
 
   // Fonction pour charger les données d'absence
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true)
-      
-      // 1. Get students with present = false (active absences)
-      const activeResult = await getStudentsWithPresentFalse()
-      
-      // 2. Get absences that start OR end today (using the updated function)
-      const todayAbsencesResult = await getAbsentStudentsByDateRange(todayDate, 'both')
-      
-      let allAbsences = []
-      const uniqueMap = new Map()
-      
-      // Process active absences (present = false)
-      if (activeResult.success && activeResult.data) {
-        activeResult.data.forEach(item => {
-          const key = `${item.id_eleve}-${item.absence_start_date || todayDate}`
-          if (!uniqueMap.has(key)) {
-            uniqueMap.set(key, {
-              id: item.absence_id || item.id,
-              nom: item.nom || 'غير معروف',
-              num: item.num || '-',
-              class_libelle: item.class_libelle || 'بدون قسم',
-              id_classe: item.id_class,
-              debut: item.absence_start_date || todayDate,
-              heure_deb: item.absence_start_time || '-',
-              fin: item.absence_end_date || '-',
-              heure_fin: item.absence_end_time || '-',
-              justified: item.justified || false,
-              present: item.present || false,
-              type: 'active',
-              id_eleve: item.id_eleve
-            })
-          }
-        })
-      }
-      
-      // Process absences that start OR end today
-      if (todayAbsencesResult.success && todayAbsencesResult.data) {
-        todayAbsencesResult.data.forEach(item => {
-          // Check if it starts today OR ends today
-          const startsToday = item.absence_start_date === todayDate
-          const endsToday = item.absence_end_date === todayDate
-          
-          // Only include if it starts or ends today
-          if (startsToday || endsToday) {
-            const key = `${item.id_eleve}-${item.absence_start_date || todayDate}`
-            if (!uniqueMap.has(key)) {
-              uniqueMap.set(key, {
-                id: item.id,
-                nom: item.student_name || 'غير معروف',
-                num: item.student_num || '-',
-                class_libelle: item.class_libelle || 'بدون قسم',
-                id_classe: item.id_class,
-                debut: item.absence_start_date,
-                heure_deb: item.absence_start_time || '-',
-                fin: item.absence_end_date,
-                heure_fin: item.absence_end_time || '-',
-                justified: item.justified || false,
-                present: item.present || false,
-                type: startsToday && endsToday ? 'start_and_end_today' : 
-                       startsToday ? 'start_today' : 'end_today',
-                id_eleve: item.id_eleve
-              })
-            }
-          }
-        })
-      }
-      
-      // Convert map to array
-      let formattedData = Array.from(uniqueMap.values())
-      
-      // Filter by selected class
-      if (selectedClass !== 'all') {
-        const selectedClassObj = classes.find(c => c.id_class === selectedClass)
-        if (selectedClassObj) {
-          formattedData = formattedData.filter(item => 
-            item.class_libelle === selectedClassObj.libelle
-          )
-        }
-      }
-      
-      setAbsents(formattedData)
-      const total = formattedData.length
-      const justified = formattedData.filter(item => item.justified).length
-      const unJustified = total - justified
-      setStats({ total, justified, unJustified })
-      
-    } catch (error) {
-      console.error('Error loading data:', error)
-      toast.error('حدث خطأ في جلب البيانات')
+ 
+const loadData = useCallback(async () => {
+  try {
+    setLoading(true)
+
+    
+    const result = await getAbsentStudentsByDateRange(todayDate, 'both')
+
+    if (!result.success) {
+      toast.error('خطأ في جلب بيانات الغياب: ' + (result.error || 'خطأ غير معروف'))
       setAbsents([])
       setStats({ total: 0, justified: 0, unJustified: 0 })
-    } finally {
-      setLoading(false)
+      return
     }
-  }, [selectedClass, classes, todayDate])
+
+    let formattedData = (result.data || []).map(item => ({
+      id: item.id,
+      nom: item.student_name || 'غير معروف',
+      num: item.student_num || '-',
+      class_libelle: item.class_libelle || 'بدون قسم',
+      id_classe: item.id_class,
+      id_eleve: item.id_eleve,
+
+      debut: item.absence_start_date || '-',
+      heure_deb: item.absence_start_time || '-',
+
+      fin: item.absence_end_date || null,
+      heure_fin: item.absence_end_time || null,
+
+      justified: item.justified || false,
+      present: item.present,
+
+      // Determine why this absence appears in today's report
+      type:
+        item.absence_start_date === todayDate &&
+        item.absence_end_date === todayDate
+          ? 'start_and_end_today'
+          : item.absence_start_date === todayDate
+            ? 'start_today'
+            : 'end_today'
+    }))
+
+    // Filter by selected class
+    if (selectedClass !== 'all') {
+      formattedData = formattedData.filter(
+        item => String(item.id_classe) === String(selectedClass)
+      )
+    }
+
+    setAbsents(formattedData)
+
+    const total = formattedData.length
+
+    // Only completed absences can have a final justified/unjustified status.
+    const justified = formattedData.filter(
+      item => item.fin && item.justified
+    ).length
+
+    const unJustified = formattedData.filter(
+      item => item.fin && !item.justified
+    ).length
+
+    setStats({
+      total,
+      justified,
+      unJustified
+    })
+
+  } catch (error) {
+    console.error('Error loading absence report:', error)
+
+    toast.error('حدث خطأ في جلب بيانات الغياب')
+
+    setAbsents([])
+    setStats({
+      total: 0,
+      justified: 0,
+      unJustified: 0
+    })
+  } finally {
+    setLoading(false)
+  }
+}, [selectedClass, todayDate])
+
 
   // Fonction pour charger les sanctions du jour
   const loadSanctionsData = useCallback(async () => {
@@ -269,6 +258,16 @@ export default function ReportsPage() {
       return '-'
     }
   }
+  const formatDateForPDF = (date = new Date()) => {
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '-'
+
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+
+  return `${day}-${month}-${year}`
+}
 
   const generatePDF = async () => {
     if (absents.length === 0) {
@@ -298,8 +297,7 @@ export default function ReportsPage() {
         : (classes.find(c => c.id_class === selectedClass)?.libelle || 'الكل')
       
       const currentDate = new Date()
-      const reportTitle = `تقرير غيابات اليوم - ${currentDate.toLocaleDateString('ar-EG')}`
-      
+const reportTitle = `تقرير غيابات اليوم - ${formatDateForPDF(currentDate)}`      
       let tableRows = ''
       for (let i = 0; i < absents.length; i++) {
         const item = absents[i]
@@ -336,8 +334,7 @@ export default function ReportsPage() {
           
           <div style="margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span><strong>تاريخ التقرير:</strong> ${currentDate.toLocaleDateString('ar-EG')}</span>
-              <span><strong>القسم:</strong> ${selectedClassName}</span>
+<span><strong>تاريخ التقرير:</strong> ${formatDateForPDF(currentDate)}</span>              <span><strong>القسم:</strong> ${selectedClassName}</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span><strong>إجمالي الغيابات:</strong> ${stats.total}</span>
@@ -381,9 +378,9 @@ export default function ReportsPage() {
           <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cccccc; text-align: center; font-size: 9pt; color: #7f8c8d;">
             <p>تم إنشاء هذا التقرير بواسطة نظام معهد عبدالحميد غزواني</p>
             <p>* يشمل التقرير:</p>
-            <p style="font-size: 8pt;">-   الطلاب الغائبون  </p>
-            <p style="font-size: 8pt;">- الطلاب الذين بدأ غيابهم اليوم </p>
-            <p style="font-size: 8pt;">- الطلاب الذين انتهى غيابهم اليوم</p>
+            <p style="font-size: 8pt;">-   التلاميذ الغائبون  </p>
+            <p style="font-size: 8pt;">- التلاميذ الذين بدأ غيابهم اليوم </p>
+            <p style="font-size: 8pt;">- التلاميذ الذين انتهى غيابهم اليوم</p>
           </div>
         </div>
       `
@@ -463,8 +460,7 @@ export default function ReportsPage() {
         : (classes.find(c => c.id_class === sanctionsSelectedClass)?.libelle || 'الكل')
       
       const currentDate = new Date()
-      const reportTitle = `تقرير عقوبات اليوم - ${currentDate.toLocaleDateString('ar-EG')}`
-      
+const reportTitle = `تقرير عقوبات اليوم - ${formatDateForPDF(currentDate)}`      
       let tableRows = ''
       for (let i = 0; i < sanctions.length; i++) {
         const item = sanctions[i]
@@ -492,8 +488,8 @@ export default function ReportsPage() {
           
           <div style="margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span><strong>تاريخ التقرير:</strong> ${currentDate.toLocaleDateString('ar-EG')}</span>
-              <span><strong>القسم:</strong> ${selectedClassName}</span>
+<span><strong>تاريخ التقرير:</strong> ${formatDateForPDF(currentDate)}</span>
+            <span><strong>القسم:</strong> ${selectedClassName}</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span><strong>إجمالي العقوبات:</strong> ${sanctionsStats.total}</span>
@@ -676,9 +672,9 @@ export default function ReportsPage() {
               <div className="mt-3 text-sm text-gray-500 bg-blue-50 p-2 rounded-lg">
                 📌 يشمل التقرير:
                 <ul className="list-disc list-inside mt-1 text-xs">
-                  <li>الطلاب الغائبون</li>
-                  <li>الطلاب الذين بدأ غيابهم اليوم ({formatDate(todayDate)})</li>
-                  <li>الطلاب الذين انتهى غيابهم اليوم ({formatDate(todayDate)})</li>
+                  <li>التلاميذ الغائبون</li>
+                  <li>التلاميذ الذين بدأ غيابهم اليوم ({formatDate(todayDate)})</li>
+                  <li>التلاميذ الذين انتهى غيابهم اليوم ({formatDate(todayDate)})</li>
                 </ul>
               </div>
             </div>

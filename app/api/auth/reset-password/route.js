@@ -18,7 +18,7 @@ export async function POST(request) {
     const formattedEmail = email.trim().toLowerCase()
     
     // Use correct environment variable names
-    const supabaseUrl = process.env.SUPABASE_URL
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY
     
     
